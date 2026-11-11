@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = ["crates/pixel", "crates/core", "crates/compiler", "crates/wasm"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace.dependencies]
+libm = "0.2"
+serde = { version = "1", features = ["derive"] }
+# (the numbers as they are written and the objects in the order they are written in, like the designer reads them)
+serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 1

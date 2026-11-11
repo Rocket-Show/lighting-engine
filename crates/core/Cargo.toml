@@ -1,0 +1,17 @@
+[package]
+name = "lighting-engine-core"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "engine_core"
+
+[features]
+default = []
+# the writer of the compiled show format, for the compiler: needs alloc
+writer = []
+
+[dependencies]
+libm = { workspace = true }
+lighting-engine-pixel = { path = "../pixel" }
