@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown, thumbv8m.main-none-eabihf
+          components: clippy, rustfmt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: The code is formatted and the specification is the one of the code
+        run: |
+          cargo fmt --all -- --check
+          python3 tools/format-tables.py --check
+
+      - name: The core can't panic in a frame
+        run:
+          cargo clippy -p lighting-engine-core -p lighting-engine-pixel --no-deps -- -D clippy::indexing_slicing -D
+          clippy::unwrap_used -D clippy::expect_used -D clippy::panic
+
+      - name: The conformance cases, natively
+        run: cargo test --workspace
+
+      - name: A damaged show doesn't crash a release build
+        run: cargo test --release -p lighting-engine-compiler --test engine_inputs a_damaged_show
+
+      - name: The core builds for a Cortex-M33
+        run: cargo build -p lighting-engine-core --target thumbv8m.main-none-eabihf --release
+
+      - name: engine.wasm comes to the same bits as the native build
+        run: |
+          cargo build -p lighting-engine-wasm --target wasm32-unknown-unknown --release
+          node tools/conformance-wasm.mjs
+
+      - name: The times of the reference rigs
+        run: cargo run --release -p lighting-engine-compiler --example bench
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine.wasm
+          path: target/wasm32-unknown-unknown/release/engine.wasm
