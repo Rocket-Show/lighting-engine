@@ -1,4 +1,4 @@
-//! The arithmetic of the pixel patterns (`PixelMath` and `CycleSine` of Rocket Show), in single precision.
+//! The arithmetic of the pixel patterns, in single precision.
 //!
 //! What looks random comes from a hash of whole numbers, never from a random source: a moment of an effect always
 //! looks the same.
@@ -43,7 +43,7 @@ pub fn triangle(value: f32) -> f32 {
 
 /// 0 below `from`, 1 above `to` and a smooth step in between. A step of no width jumps at `from`.
 pub fn smooth_step(from: f32, to: f32, value: f32) -> f32 {
-    // (not "to <= from": a border which is not a number jumps as well, like in Java)
+    // (not "to <= from": a border which is not a number jumps as well)
     #[allow(clippy::neg_cmp_op_on_partial_ord)]
     if !(to > from) {
         return if value < from { 0.0 } else { 1.0 };
@@ -59,14 +59,13 @@ pub fn band(distance: f32, half_width: f32, edge: f32) -> f32 {
     1.0 - smooth_step(half_width - edge, half_width + edge, distance)
 }
 
-/// A number as a 32 bit integer, cut off towards zero and wrapped around (`PixelMath.toInt`, `value | 0` of the
-/// designer).
+/// A number as a 32 bit integer, cut off towards zero and wrapped around.
 pub fn to_int(value: f32) -> i32 {
     (value as i64) as i32
 }
 
-/// The hash of three whole numbers (a pixel, a moment and what it is for) as its 32 bits: exactly the integers of
-/// `PixelMath.hash`, with multiplications which wrap around at 32 bits.
+/// The hash of three whole numbers (a pixel, a moment and what it is for) as its 32 bits, worked out in integers
+/// with multiplications which wrap around at 32 bits.
 pub fn hash_u32(a: i32, b: i32, c: i32) -> u32 {
     let mut h = (a as u32)
         .wrapping_mul(374_761_393)
@@ -82,13 +81,13 @@ pub fn hash_u32(a: i32, b: i32, c: i32) -> u32 {
 /// A number between 0 and 1 (never 1) which looks random, the same for the same three whole numbers.
 ///
 /// The 32 bits of [`hash_u32`] over 2^32, cut off to the 24 bits a float holds: rounding to the nearest float instead
-/// would turn the 128 highest hashes into 1, which `PixelMath.hash` never gives.
+/// would turn the 128 highest hashes into 1, which a hash never is.
 pub fn hash(a: i32, b: i32, c: i32) -> f32 {
     (hash_u32(a, b, c) >> 8) as f32 / 16_777_216.0
 }
 
-/// The sine over a cycle, sin(2π · position) (`CycleSine.sin`): the cycle is reduced to a quarter around its nearest
-/// multiple of 90°, and the sine or the cosine of what is left (between -π/4 and π/4) comes from `libm`.
+/// The sine over a cycle, sin(2π · position): the cycle is reduced to a quarter around its nearest multiple of 90°,
+/// and the sine or the cosine of what is left (between -π/4 and π/4) comes from `libm`.
 pub fn sin_cycle(position: f32) -> f32 {
     // the nearest quarter of the cycle and the angle left from it
     let quarter = libm::floorf(position * 4.0 + 0.5);
@@ -115,7 +114,7 @@ pub fn value_noise(x: f32, y: f32) -> f32 {
 }
 
 /// [`value_noise`] at a place whose whole part is exact: the cell of the landscape is taken from the integers
-/// (wrapped around at 32 bits like `PixelMath.toInt`), the place in the cell from the parts.
+/// (wrapped around at 32 bits), the place in the cell from the parts.
 pub fn value_noise_at(x: Cycle, y: Cycle) -> f32 {
     let x = Cycle::new(x.whole, x.frac);
     let y = Cycle::new(y.whole, y.frac);
@@ -150,8 +149,8 @@ pub fn fractal_noise_at(x: Cycle, y: Cycle) -> f32 {
 mod tests {
     use super::*;
 
-    // PixelMath.hash, with the integers of Java written out as the 64 bit ones they wrap around in
-    fn java_hash(a: i32, b: i32, c: i32) -> f64 {
+    // the hash again in 64 bit integers, cut back to 32 bits after every step, as a double
+    fn hash_in_64_bits(a: i32, b: i32, c: i32) -> f64 {
         let wrap = |value: i64| value as i32;
         let unsigned_shift = |value: i32, bits: u32| ((value as u32) >> bits) as i32;
         let mut h = wrap(a as i64 * 374761393 + b as i64 * 668265263 + c as i64 * 1440670441);
@@ -163,16 +162,16 @@ mod tests {
     }
 
     #[test]
-    fn hashes_like_java() {
-        // worked out by hand from the formula of PixelMath.hash:
+    fn hashes_three_whole_numbers() {
+        // worked out by hand from the formula:
         // hash(0, 0, 0): h stays 0
         assert_eq!(hash_u32(0, 0, 0), 0);
         assert_eq!(hash(0, 0, 0), 0.0);
 
         // hash(1, 0, 0): h = 374761393 = 0x165667B1
-        //   h ^ (h >>> 15) = 0x165667B1 ^ 0x00002CAC = 0x16564B1D, times 0x85EBCA77 (mod 2^32) = 0x7E00CC7B
-        //   h ^ (h >>> 13) = 0x7E00CC7B ^ 0x0003F006 = 0x7E033C7D, times 0xC2B2AE35 (mod 2^32) = 0x12B27BE1
-        //   h ^ (h >>> 16) = 0x12B27BE1 ^ 0x000012B2 = 0x12B26953, over 2^32 = 0.0730348...
+        //   h ^ (h >> 15) = 0x165667B1 ^ 0x00002CAC = 0x16564B1D, times 0x85EBCA77 (mod 2^32) = 0x7E00CC7B
+        //   h ^ (h >> 13) = 0x7E00CC7B ^ 0x0003F006 = 0x7E033C7D, times 0xC2B2AE35 (mod 2^32) = 0x12B27BE1
+        //   h ^ (h >> 16) = 0x12B27BE1 ^ 0x000012B2 = 0x12B26953, over 2^32 = 0.0730348...
         assert_eq!(hash_u32(1, 0, 0), 0x12B2_6953);
         assert_eq!(hash(1, 0, 0), 0x12_B269 as f32 / 16_777_216.0);
         assert!((hash(1, 0, 0) - 0.073_034_84).abs() < 1e-7);
@@ -196,7 +195,7 @@ mod tests {
         for a in [0, 1, -1, 7, 335, -210, 694, 123_456_789, i32::MAX, i32::MIN] {
             for b in [0, 1, -1, 5, 16, -77, i32::MAX, i32::MIN] {
                 for c in [0, 3, 4, 5, 7, 9, 11, -3, 2_000_000_011, i32::MIN] {
-                    let expected = java_hash(a, b, c);
+                    let expected = hash_in_64_bits(a, b, c);
                     let value = hash(a, b, c);
 
                     assert_eq!(hash_u32(a, b, c) as f64 / 4294967296.0, expected, "hash({a}, {b}, {c})");
@@ -216,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn cuts_a_number_to_32_bits_like_the_designer() {
+    fn cuts_a_number_to_32_bits() {
         assert_eq!(to_int(3.9), 3);
         assert_eq!(to_int(-3.9), -3);
         assert_eq!(to_int(4294967296.0 + 4096.0), 4096);
@@ -268,20 +267,20 @@ mod tests {
         assert!(largest < 5e-7, "{largest}");
     }
 
-    // PixelMath.valueNoise in doubles, at a cell and a place in it
-    fn java_value_noise(xi: i32, xf: f64, yi: i32, yf: f64) -> f64 {
+    // the noise in doubles, at a cell and a place in it
+    fn value_noise_in_doubles(xi: i32, xf: f64, yi: i32, yf: f64) -> f64 {
         let u = xf * xf * (3.0 - 2.0 * xf);
         let v = yf * yf * (3.0 - 2.0 * yf);
-        let a = java_hash(xi, yi, 7);
-        let b = java_hash(xi.wrapping_add(1), yi, 7);
-        let c = java_hash(xi, yi.wrapping_add(1), 7);
-        let d = java_hash(xi.wrapping_add(1), yi.wrapping_add(1), 7);
+        let a = hash_in_64_bits(xi, yi, 7);
+        let b = hash_in_64_bits(xi.wrapping_add(1), yi, 7);
+        let c = hash_in_64_bits(xi, yi.wrapping_add(1), 7);
+        let d = hash_in_64_bits(xi.wrapping_add(1), yi.wrapping_add(1), 7);
 
         a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v
     }
 
     #[test]
-    fn makes_the_noise_of_java() {
+    fn makes_the_same_noise_as_in_doubles() {
         for (x, y) in [
             (0.0f32, 0.0f32),
             (0.5, 0.5),
@@ -290,7 +289,7 @@ mod tests {
             (1366.3, -12.7),
             (100.0, 100.0),
         ] {
-            let expected = java_value_noise(
+            let expected = value_noise_in_doubles(
                 x.floor() as i32,
                 (x - x.floor()) as f64,
                 y.floor() as i32,
@@ -305,8 +304,9 @@ mod tests {
 
         // the fractal one: the same landscapes at 2.03 and 4.1 times the place
         for (x, y) in [(0.3f64, 0.7f64), (5.61, 2.2 * 4.748 + 1.5), (12.0, -3.3)] {
-            let noise =
-                |x: f64, y: f64| java_value_noise(x.floor() as i32, x - x.floor(), y.floor() as i32, y - y.floor());
+            let noise = |x: f64, y: f64| {
+                value_noise_in_doubles(x.floor() as i32, x - x.floor(), y.floor() as i32, y - y.floor())
+            };
             let expected = noise(x, y) * 0.55
                 + noise(x * 2.03 + 17.1, y * 2.03 + 5.3) * 0.3
                 + noise(x * 4.1 + 3.7, y * 4.1 + 11.9) * 0.15;
@@ -320,10 +320,10 @@ mod tests {
 
     #[test]
     fn keeps_the_cell_of_the_noise_far_out() {
-        // a place 2^40 cells out: the cell wraps around at 32 bits like in Java, the place in the cell is kept
+        // a place 2^40 cells out: the cell wraps around at 32 bits, the place in the cell is kept
         let x = Cycle::new((1 << 40) + 3, 0.25);
         let y = Cycle::new(-(1 << 40) + 7, 0.75);
-        let expected = java_value_noise(3, 0.25, 7, 0.75);
+        let expected = value_noise_in_doubles(3, 0.25, 7, 0.75);
 
         assert!((value_noise_at(x, y) as f64 - expected).abs() < 1e-6);
         assert_eq!(value_noise_at(x, y), value_noise(3.25, 7.75));

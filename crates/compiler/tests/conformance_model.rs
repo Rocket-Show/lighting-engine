@@ -1,7 +1,7 @@
-//! The conformance cases of the designer which only need the model and the profile helpers:
-//! `profileNumber`, `defaultValue`, `hexColor`, `mixColors`, `pixels` and `pixelGroup`, run like
-//! `DesignerConformanceTest` of Rocket Show runs them and compared exactly. The projects of the
-//! `channelValues` cases and the profiles of the cases are read as well.
+//! The conformance cases which only need the model and the profile helpers: `profileNumber`,
+//! `defaultValue`, `hexColor`, `mixColors`, `pixels` and `pixelGroup`, compared exactly to the
+//! recorded values. The projects of the `channelValues` cases and the profiles of the cases are
+//! read as well.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -39,8 +39,7 @@ fn case_files() -> Vec<PathBuf> {
     files
 }
 
-// the first difference between what the designer recorded and what the engine came to, None for
-// none (`difference` of the conformance test of Java)
+// the first difference between the recorded value and what the engine came to, None for none
 fn difference(expected: &Json, actual: &Json, path: &str) -> Option<String> {
     match (expected, actual) {
         // exactly the same number, the sign of a zero aside
@@ -248,7 +247,7 @@ fn pixel_group() {
             .collect();
         match resolve_group_pixels(Some(&group), &pixels) {
             Ok(pixels) => keys(&pixels),
-            // a rule which can't be read stops the whole group on both sides
+            // a rule which can't be read stops the whole group: the cases record "error" for it
             Err(_) => Json::string("error"),
         }
     });

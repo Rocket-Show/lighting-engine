@@ -1,16 +1,14 @@
-//! The project of the Rocket Show designer, read from its JSON the way the Java engine reads it.
+//! The project, read from its JSON.
 //!
-//! A port of the model classes of `lighting/designer` of Rocket Show, which Jackson reads with
-//! `DesignerJson.MAPPER` (Jackson 3): a value which is `null` keeps the default of its field, a
-//! property nobody knows is ignored, a name of an enum nobody knows is read as missing, the last of
-//! two properties of the same name wins, and scalars are coerced the way Jackson coerces them (a
-//! number is read into a text as it is written, `"12"` into a number, `1.9` into the whole number
-//! 1, 0 and 1 into a boolean). The setters of the Java classes which replace an empty value by a
-//! default are followed as well.
+//! The rules it is read by: a value which is `null` keeps the default of its field, a property
+//! nobody knows is ignored, a name of an enum nobody knows is read as missing, the last of two
+//! properties of the same name wins, and scalars are coerced (a number is read into a text as it
+//! is written, `"12"` into a number, `1.9` into the whole number 1, 0 and 1 into a boolean). Some
+//! fields replace an empty value by a default.
 //!
 //! The JSON itself is read by [`Json::parse`], not by `serde_json`: the objects keep the order of
 //! their names (the pixel groups of a matrix and the channels of a profile are played in it), and
-//! the numbers are the very doubles Java reads (`serde_json` only promises them with its
+//! every number is the double closest to what is written (`serde_json` only promises that with its
 //! `float_roundtrip` feature, which is off). Every type also implements `serde::Deserialize`,
 //! through [`Json`], for whoever reads with serde: the order is kept there as well, the numbers
 //! are then the ones the serde format hands over.
@@ -18,8 +16,8 @@
 use std::borrow::Cow;
 use std::fmt;
 
-/// The highest project version the Java engine knows (`SUPPORTED_PROJECT_VERSION`). Only projects
-/// of this version are compiled, the migrations of the older ones are not ported.
+/// The project version the compiler knows. Only projects of this version are compiled: older
+/// ones are not migrated.
 pub const SUPPORTED_PROJECT_VERSION: i32 = 11;
 
 // ---------------------------------------------------------------------------------------------
@@ -38,7 +36,8 @@ pub enum Json {
     Object(Vec<(String, Json)>),
 }
 
-/// A JSON number, kept as it is written (Jackson reads a number into a text field as written).
+/// A JSON number, kept as it is written: a number where a text is expected is read as it is
+/// written.
 #[derive(Debug, Clone, PartialEq)]
 pub struct JsonNumber {
     raw: String,
@@ -65,7 +64,7 @@ impl JsonNumber {
         !self.raw.contains(['.', 'e', 'E'])
     }
 
-    /// The double closest to the number, like `Double.parseDouble`.
+    /// The double closest to the number.
     pub fn as_f64(&self) -> f64 {
         self.raw.parse::<f64>().unwrap_or(f64::NAN)
     }
@@ -81,8 +80,8 @@ impl JsonNumber {
 }
 
 impl Json {
-    /// Reads a JSON text, as strictly as Jackson does: no comments, no trailing commas, nothing
-    /// after the value. A name written twice in an object is kept twice.
+    /// Reads a JSON text strictly: no comments, no trailing commas, nothing after the value. A name
+    /// written twice in an object is kept twice.
     pub fn parse(text: &str) -> Result<Json, String> {
         let mut parser = Parser {
             text,
@@ -149,7 +148,7 @@ impl Json {
         }
     }
 
-    /// The property of an object, the last one of the name (like a `JsonNode` of Jackson).
+    /// The property of an object, the last one of the name.
     pub fn get(&self, name: &str) -> Option<&Json> {
         match self {
             Json::Object(entries) => entries
@@ -165,9 +164,8 @@ impl Json {
         self.get(name).is_some()
     }
 
-    /// The properties of an object like a `LinkedHashMap` of Java keeps them: each name once, at
-    /// the place it is first written at, with the value it is last written with. None for
-    /// anything but an object.
+    /// The properties of an object, each name once: at the place it is first written at, with the
+    /// value it is last written with. None for anything but an object.
     pub fn properties(&self) -> Vec<(&str, &Json)> {
         let mut properties: Vec<(&str, &Json)> = Vec::new();
         if let Json::Object(entries) = self {
@@ -199,14 +197,14 @@ impl Json {
         }
     }
 
-    /// The text of a scalar like `JsonNode.asText()` of Jackson 3 gives it: a text as it is, a
-    /// whole number in digits, any other number like `Double.toString`, `true` or `false`, the
-    /// empty text for `null`. An array and an object have none (Jackson throws).
+    /// The text of a scalar: a text as it is, a whole number in digits, any other number as
+    /// [`double_to_text`] writes it, `true` or `false`, the empty text for `null`. An array and an
+    /// object have none.
     pub fn as_text(&self) -> Result<String, String> {
         match self {
             Json::Null => Ok(String::new()),
             Json::Bool(value) => Ok(value.to_string()),
-            Json::Number(number) => Ok(java_number_text(number)),
+            Json::Number(number) => Ok(number_text(number)),
             Json::String(text) => Ok(text.clone()),
             Json::Array(_) => Err("an array has no text".to_string()),
             Json::Object(_) => Err("an object has no text".to_string()),
@@ -309,7 +307,7 @@ impl<'de> serde::Deserialize<'de> for Json {
     }
 }
 
-// as deep as Jackson reads (StreamReadConstraints)
+// how deep arrays and objects may be nested
 const MAX_DEPTH: usize = 1000;
 
 struct Parser<'a> {
@@ -529,16 +527,19 @@ impl Parser<'_> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Java
+// Texts and numbers
 // ---------------------------------------------------------------------------------------------
 
-/// `String.trim()` of Java: without the characters up to the space (U+0020) at both ends.
-pub fn java_trim(text: &str) -> &str {
+/// The text without the characters up to the space (U+0020) at both ends: the control characters
+/// and the space are trimmed, any other white space (a no-break space) is not.
+pub fn trim_controls_and_spaces(text: &str) -> &str {
     text.trim_matches(|character: char| character <= ' ')
 }
 
-/// `Double.toString` of Java (of a JDK from 19 on, which writes the shortest digits).
-pub fn java_double_to_string(value: f64) -> String {
+/// The text of a double: the shortest digits which read back as the same double, always with a
+/// fraction ("100.0"), from 10 000 000 on and below 0.001 with an exponent ("1.0E7", "1.5E-7").
+/// No number is "NaN", the infinities are "Infinity" and "-Infinity".
+pub fn double_to_text(value: f64) -> String {
     if value.is_nan() {
         return "NaN".to_string();
     }
@@ -559,33 +560,33 @@ pub fn java_double_to_string(value: f64) -> String {
     }
 }
 
-// the text of a number node of Jackson: a whole number in digits, any other like Double.toString
-fn java_number_text(number: &JsonNumber) -> String {
+// the text of a number: a whole number in digits, any other as double_to_text writes it
+fn number_text(number: &JsonNumber) -> String {
     if number.is_integer() {
         match number.as_i64() {
             Some(value) => value.to_string(),
-            // a BigInteger
+            // too large for an i64: as it is written
             None => number.as_str().to_string(),
         }
     } else {
-        java_double_to_string(number.as_f64())
+        double_to_text(number.as_f64())
     }
 }
 
-// `String.valueOf` of what Jackson reads into an `Object`: a text, a number, a boolean, a list or
-// a map
-fn java_value_of(json: &Json) -> String {
+// The text of any value, for a name which is not written as a text: "null", a number like
+// number_text, a list as "[a, b]" and an object as "{name=value}".
+fn value_text(json: &Json) -> String {
     match json {
         Json::Null => "null".to_string(),
         Json::Bool(value) => value.to_string(),
-        Json::Number(number) => java_number_text(number),
+        Json::Number(number) => number_text(number),
         Json::String(text) => text.clone(),
-        Json::Array(items) => format!("[{}]", items.iter().map(java_value_of).collect::<Vec<_>>().join(", ")),
+        Json::Array(items) => format!("[{}]", items.iter().map(value_text).collect::<Vec<_>>().join(", ")),
         Json::Object(_) => format!(
             "{{{}}}",
             json.properties()
                 .iter()
-                .map(|(key, value)| format!("{key}={}", java_value_of(value)))
+                .map(|(key, value)| format!("{key}={}", value_text(value)))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
@@ -593,7 +594,7 @@ fn java_value_of(json: &Json) -> String {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Reading the values like Jackson
+// Reading the values
 // ---------------------------------------------------------------------------------------------
 
 // where a value is in the JSON, for the errors
@@ -687,9 +688,9 @@ impl<T> Slot<T> for Option<T> {
     }
 }
 
-// a class Jackson reads property by property
+// a struct read property by property
 trait Bean: Default {
-    // sets a property, false for one the class doesn't have
+    // sets a property, false for one the struct doesn't have
     fn set_property(&mut self, key: &str, value: &Json, at: &At) -> Result<bool, String>;
 }
 
@@ -713,7 +714,7 @@ fn bean<T: Bean>(json: &Json, at: &At) -> Read<T> {
     }
 }
 
-// a String: a number is taken as it is written
+// a text: a number is taken as it is written
 fn text(json: &Json, at: &At) -> Read<String> {
     match json {
         Json::Null => Ok(None),
@@ -724,14 +725,15 @@ fn text(json: &Json, at: &At) -> Read<String> {
     }
 }
 
-// a text with a default its setter falls back to when it is empty
+// a text with a default it falls back to when it is empty
 fn text_or(default: &'static str) -> impl Fn(&Json, &At) -> Read<String> {
     move |json, at| Ok(text(json, at)?.map(|text| if text.is_empty() { default.to_string() } else { text }))
 }
 
-// a number written as a text, like Double.parseDouble reads it after Jackson (the hexadecimal
-// ones aside)
-fn parse_java_double(text: &str) -> Option<f64> {
+// A number written as a text: in decimal digits (also ".5", "5." and with an exponent, a "d" or an
+// "f" may follow), or one of the names of no number and of the infinities ("NaN", "Infinity",
+// "INF").
+fn parse_double(text: &str) -> Option<f64> {
     match text {
         "NaN" | "+NaN" | "-NaN" => return Some(f64::NAN),
         "Infinity" | "+Infinity" | "INF" => return Some(f64::INFINITY),
@@ -758,21 +760,21 @@ fn parse_java_double(text: &str) -> Option<f64> {
     number.parse::<f64>().ok()
 }
 
-fn double_of(json: &Json, at: &At, primitive: bool) -> Read<f64> {
+fn double_of(json: &Json, at: &At, required: bool) -> Read<f64> {
     match json {
         Json::Null => Ok(None),
         Json::Number(number) => Ok(Some(number.as_f64())),
         Json::String(text) => {
-            let trimmed = java_trim(text);
+            let trimmed = trim_controls_and_spaces(text);
             if trimmed.is_empty() {
-                // read as null, which a primitive can't be
-                return if primitive {
+                // read as null, which a number that has to be there can't be
+                return if required {
                     Err(at.error("an empty text is not a number"))
                 } else {
                     Ok(None)
                 };
             }
-            parse_java_double(trimmed)
+            parse_double(trimmed)
                 .map(Some)
                 .ok_or_else(|| at.error(&format!("\"{text}\" is not a number")))
         }
@@ -780,17 +782,17 @@ fn double_of(json: &Json, at: &At, primitive: bool) -> Read<f64> {
     }
 }
 
-// a double
+// a number (an empty text is an error)
 fn num(json: &Json, at: &At) -> Read<f64> {
     double_of(json, at, true)
 }
 
-// a Double
+// a number which may be left empty (an empty text is read as null)
 fn num_w(json: &Json, at: &At) -> Read<f64> {
     double_of(json, at, false)
 }
 
-fn long_of(json: &Json, at: &At, primitive: bool, min: i64, max: i64) -> Read<i64> {
+fn long_of(json: &Json, at: &At, required: bool, min: i64, max: i64) -> Read<i64> {
     let out_of_range = || at.error("a number out of range");
     match json {
         Json::Null => Ok(None),
@@ -807,9 +809,9 @@ fn long_of(json: &Json, at: &At, primitive: bool, min: i64, max: i64) -> Read<i6
             Ok(Some(value as i64))
         }
         Json::String(text) => {
-            let trimmed = java_trim(text);
+            let trimmed = trim_controls_and_spaces(text);
             if trimmed.is_empty() {
-                return if primitive {
+                return if required {
                     Err(at.error("an empty text is not a number"))
                 } else {
                     Ok(None)
@@ -828,22 +830,22 @@ fn long_of(json: &Json, at: &At, primitive: bool, min: i64, max: i64) -> Read<i6
     }
 }
 
-// an int
+// a whole number of 32 bits (an empty text is an error)
 fn int(json: &Json, at: &At) -> Read<i32> {
     Ok(long_of(json, at, true, i32::MIN as i64, i32::MAX as i64)?.map(|value| value as i32))
 }
 
-// an Integer
+// a whole number of 32 bits which may be left empty (an empty text is read as null)
 fn int_w(json: &Json, at: &At) -> Read<i32> {
     Ok(long_of(json, at, false, i32::MIN as i64, i32::MAX as i64)?.map(|value| value as i32))
 }
 
-// a long
+// a whole number of 64 bits (an empty text is an error)
 fn long(json: &Json, at: &At) -> Read<i64> {
     long_of(json, at, true, i64::MIN, i64::MAX)
 }
 
-fn boolean_of(json: &Json, at: &At, primitive: bool) -> Read<bool> {
+fn boolean_of(json: &Json, at: &At, required: bool) -> Read<bool> {
     match json {
         Json::Null => Ok(None),
         Json::Bool(value) => Ok(Some(*value)),
@@ -851,22 +853,22 @@ fn boolean_of(json: &Json, at: &At, primitive: bool) -> Read<bool> {
         Json::Number(number) if number.is_integer() => {
             Ok(Some(number.as_str().bytes().any(|byte| (b'1'..=b'9').contains(&byte))))
         }
-        Json::String(text) => match java_trim(text) {
+        Json::String(text) => match trim_controls_and_spaces(text) {
             "true" | "True" | "TRUE" => Ok(Some(true)),
             "false" | "False" | "FALSE" => Ok(Some(false)),
-            "" if !primitive => Ok(None),
+            "" if !required => Ok(None),
             _ => Err(at.error(&format!("\"{text}\" is not a boolean"))),
         },
         other => Err(at.error(&format!("expected a boolean, not {}", kind(other)))),
     }
 }
 
-// a boolean
+// a boolean (an empty text is an error)
 fn boolean(json: &Json, at: &At) -> Read<bool> {
     boolean_of(json, at, true)
 }
 
-// a Boolean
+// a boolean which may be left empty (an empty text is read as null)
 fn boolean_w(json: &Json, at: &At) -> Read<bool> {
     boolean_of(json, at, false)
 }
@@ -881,9 +883,7 @@ fn list<T>(element: impl Fn(&Json, &At) -> Read<T>) -> impl Fn(&Json, &At) -> Re
                 let at = at.index(index);
                 match element(item, &at)? {
                     Some(value) => result.push(value),
-                    None => {
-                        return Err(at.error("null is not read in this list (Java would keep it and fail on it later)"))
-                    }
+                    None => return Err(at.error("null is not read in this list")),
                 }
             }
             Ok(Some(result))
@@ -907,8 +907,7 @@ fn list_opt<T>(element: impl Fn(&Json, &At) -> Read<T>) -> impl Fn(&Json, &At) -
     }
 }
 
-// a map, read into a LinkedHashMap by Jackson: in the order of the JSON, a name written twice at
-// its first place with its last value
+// a map: in the order of the JSON, a name written twice at its first place with its last value
 fn ordered_map<T>(element: impl Fn(&Json, &At) -> Read<T>) -> impl Fn(&Json, &At) -> Read<OrderedMap<T>> {
     move |json, at| match json {
         Json::Null => Ok(None),
@@ -918,9 +917,7 @@ fn ordered_map<T>(element: impl Fn(&Json, &At) -> Read<T>) -> impl Fn(&Json, &At
                 let at = at.key(key);
                 match element(value, &at)? {
                     Some(value) => entries.push((key.to_string(), value)),
-                    None => {
-                        return Err(at.error("null is not read in this map (Java would keep it and fail on it later)"))
-                    }
+                    None => return Err(at.error("null is not read in this map")),
                 }
             }
             Ok(Some(OrderedMap { entries }))
@@ -929,8 +926,8 @@ fn ordered_map<T>(element: impl Fn(&Json, &At) -> Read<T>) -> impl Fn(&Json, &At
     }
 }
 
-// an enum Jackson reads by name, or by its place in the declaration (a whole number, also written
-// as a text). A name nobody knows is read as null.
+// an enum, read by name or by its place among its values (a whole number, also written as a
+// text). A name nobody knows is read as null.
 trait JsonEnum: Sized + Copy + 'static {
     const VALUES: &'static [Self];
     fn name_of(self) -> &'static str;
@@ -944,7 +941,7 @@ fn enumeration<E: JsonEnum>(json: &Json, at: &At) -> Read<E> {
             if let Some(value) = by_name(text) {
                 return Ok(Some(value));
             }
-            let trimmed = java_trim(text);
+            let trimmed = trim_controls_and_spaces(text);
             if let Some(value) = by_name(trimmed) {
                 return Ok(Some(value));
             }
@@ -969,8 +966,8 @@ fn enumeration<E: JsonEnum>(json: &Json, at: &At) -> Read<E> {
     }
 }
 
-/// A map which keeps the order its entries are written in, like the `LinkedHashMap` Jackson reads
-/// the channels and the wheels of a profile into.
+/// A map which keeps the order its entries are written in, for the channels and the wheels of a
+/// profile.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OrderedMap<T> {
     pub entries: Vec<(String, T)>,
@@ -1015,8 +1012,8 @@ impl<T> OrderedMap<T> {
     }
 }
 
-// A class of the model: its fields with the name they have in the JSON, their default and how
-// they are read. A class which extends another one holds it in a field and hands the properties
+// A struct of the model: its fields with the name they have in the JSON, their default and how
+// they are read. A struct which extends another one holds it in a field and hands the properties
 // it doesn't have itself on to it.
 macro_rules! bean {
     (
@@ -1066,7 +1063,7 @@ macro_rules! bean {
         }
 
         impl $name {
-            /// Reads it like Jackson reads the class.
+            /// Reads it from its JSON.
             pub fn from_json(json: &Json) -> Result<Self, String> {
                 read_bean(json, &At::root())
             }
@@ -1088,8 +1085,8 @@ macro_rules! bean {
     };
 }
 
-// An enum of the model, with the names it has in the JSON, in the order of the Java enum. Its
-// numbers count from the passed first one in this order.
+// An enum of the model, with the names it has in the JSON. Its numbers count from the passed
+// first one, in the order its values are listed in.
 macro_rules! json_enum {
     (
         $(#[$meta:meta])*
@@ -1104,7 +1101,7 @@ macro_rules! json_enum {
         }
 
         impl $name {
-            /// All of them, in the order of the Java enum.
+            /// All of them, in the order of their numbers.
             pub const ALL: &'static [$name] = &[$($name::$variant),*];
 
             /// The name in the JSON.
@@ -1121,7 +1118,7 @@ macro_rules! json_enum {
                 }
             }
 
-            /// The stable number: the place in the Java enum, counted from the first number.
+            /// The stable number: the place among the values, counted from the first number.
             pub fn as_u8(self) -> u8 {
                 self as u8 + $first
             }
@@ -1146,7 +1143,7 @@ macro_rules! json_enum {
 // ---------------------------------------------------------------------------------------------
 
 bean! {
-    /// A Rocket Show Designer project (`Project`).
+    /// A project: the JSON of a show.
     pub struct Project {
         /// The project-file version (0 where it is not written).
         "version" => version: i32 = 0, int;
@@ -1184,7 +1181,7 @@ bean! {
 }
 
 bean! {
-    /// A fixture of the project (`Fixture`).
+    /// A fixture of the project.
     pub struct Fixture {
         "uuid" => uuid: Option<String> = None, text;
         "profileUuid" => profile_uuid: Option<String> = None, text;
@@ -1203,7 +1200,7 @@ bean! {
 }
 
 bean! {
-    /// A fixture (or one of its pixels) referenced by a preset (`PresetFixture`).
+    /// A fixture (or one of its pixels) referenced by a preset.
     pub struct PresetFixture {
         "fixtureUuid" => fixture_uuid: Option<String> = None, text;
         "pixelKey" => pixel_key: Option<String> = None, text;
@@ -1211,7 +1208,7 @@ bean! {
 }
 
 bean! {
-    /// A preset (`Preset`).
+    /// A preset.
     pub struct Preset {
         "uuid" => uuid: Option<String> = None, text;
         "name" => name: Option<String> = None, text;
@@ -1236,7 +1233,7 @@ bean! {
         "effects" => effects: Vec<Effect> = Vec::new(), list(effect);
         "mirrorPan" => mirror_pan: bool = false, boolean;
         "mirrorTilt" => mirror_tilt: bool = false, boolean;
-        /// "preset", also for an empty one (`setFanOrder`).
+        /// "preset", also for an empty one.
         "fanOrder" => fan_order: String = "preset".to_string(), text_or("preset");
         "patternGroupSize" => pattern_group_size: f64 = 1.0, num;
         "patternWings" => pattern_wings: f64 = 1.0, num;
@@ -1249,21 +1246,20 @@ bean! {
         "fadeOutMillis" => fade_out_millis: f64 = 0.0, num;
         "fadeInPre" => fade_in_pre: bool = false, boolean;
         "fadeOutPost" => fade_out_post: bool = false, boolean;
-        /// The name of a transition curve (see `TransitionCurve` of the engine).
+        /// The name of a transition curve.
         "fadeInCurve" => fade_in_curve: String = "linear".to_string(), text;
         "fadeOutCurve" => fade_out_curve: String = "linear".to_string(), text;
     }
 }
 
 impl Preset {
-    /// Whether the preset mirrors what it puts on the passed capability (`mirrorsCapability`).
+    /// Whether the preset mirrors what it puts on the passed capability.
     pub fn mirrors_capability(&self, capability_type: Option<FixtureCapabilityType>) -> bool {
         (capability_type == Some(FixtureCapabilityType::Pan) && self.mirror_pan)
             || (capability_type == Some(FixtureCapabilityType::Tilt) && self.mirror_tilt)
     }
 
-    /// The position the preset points its fixtures at on the passed capability
-    /// (`getMirroredValuePercentage`).
+    /// The position the preset points its fixtures at on the passed capability.
     pub fn get_mirrored_value_percentage(
         &self,
         capability_type: Option<FixtureCapabilityType>,
@@ -1278,7 +1274,7 @@ impl Preset {
 }
 
 bean! {
-    /// One state of a preset (`PresetStep`).
+    /// One state of a preset.
     pub struct PresetStep {
         "uuid" => uuid: Option<String> = None, text;
         "startMillis" => start_millis: f64 = 0.0, num;
@@ -1292,8 +1288,7 @@ bean! {
 }
 
 impl PresetStep {
-    /// How much of the passed effect the step lets through: 1 for one it says nothing about
-    /// (`getEffectAmount`).
+    /// How much of the passed effect the step lets through: 1 for one it says nothing about.
     pub fn get_effect_amount(&self, effect_uuid: Option<&str>) -> f64 {
         let Some(effect_uuid) = effect_uuid else {
             return 1.0;
@@ -1306,7 +1301,7 @@ impl PresetStep {
 }
 
 bean! {
-    /// How much of an effect a step lets through (`PresetStepEffectAmount`).
+    /// How much of an effect a step lets through.
     pub struct PresetStepEffectAmount {
         "effectUuid" => effect_uuid: Option<String> = None, text;
         "amount" => amount: f64 = 1.0, num;
@@ -1314,7 +1309,7 @@ bean! {
 }
 
 bean! {
-    /// A value of a channel (`FixtureChannelValue`).
+    /// A value of a channel.
     pub struct FixtureChannelValue {
         "channelName" => channel_name: Option<String> = None, text;
         "profileUuid" => profile_uuid: Option<String> = None, text;
@@ -1323,14 +1318,13 @@ bean! {
     }
 }
 
-// a fan without any stops is no fan (setFan)
+// a fan without any stops is no fan
 fn fan(json: &Json, at: &At) -> Read<Option<Vec<FanStop>>> {
     Ok(list(bean::<FanStop>)(json, at)?.map(|stops| if stops.is_empty() { None } else { Some(stops) }))
 }
 
 bean! {
-    /// A value of a capability (`FixtureCapabilityValue`). What only lives while a preset travels
-    /// between two steps (`transitionFrom`, `transitionPosition`) is not part of the JSON.
+    /// A value of a capability.
     pub struct FixtureCapabilityValue {
         "type" => type_: Option<FixtureCapabilityType> = None, enumeration::<FixtureCapabilityType>;
         "profileUuid" => profile_uuid: Option<String> = None, text;
@@ -1357,19 +1351,19 @@ bean! {
 }
 
 bean! {
-    /// A value of a fan at its place along it (`FanStop`).
+    /// A value of a fan at its place along it.
     pub struct FanStop {
         "position" => position: f64 = 0.0, num_w;
         "valuePercentage" => value_percentage: f64 = 0.0, num_w;
     }
 }
 
-/// The capability values a step plays: all but the ones turned off (`PlayedValues.ofCapabilities`).
+/// The capability values a step plays: all but the ones turned off.
 pub fn played_capability_values(values: &[FixtureCapabilityValue]) -> Vec<&FixtureCapabilityValue> {
     values.iter().filter(|value| value.deactivated != Some(true)).collect()
 }
 
-/// The channel values a step plays: all but the ones turned off (`PlayedValues.ofChannels`).
+/// The channel values a step plays: all but the ones turned off.
 pub fn played_channel_values(values: &[FixtureChannelValue]) -> Vec<&FixtureChannelValue> {
     values.iter().filter(|value| value.deactivated != Some(true)).collect()
 }
@@ -1379,7 +1373,7 @@ pub fn played_channel_values(values: &[FixtureChannelValue]) -> Vec<&FixtureChan
 // ---------------------------------------------------------------------------------------------
 
 json_enum! {
-    /// `Effect.EffectChannel`.
+    /// A channel an effect names in `effectChannels`.
     pub enum EffectChannel from 0 {
         ColorRed = "colorRed",
         ColorGreen = "colorGreen",
@@ -1390,7 +1384,7 @@ json_enum! {
     }
 }
 
-/// An effect of a preset (`Effect`), by its `"type"`: `curve`, `pan-tilt`, `pixel`, or any other
+/// An effect of a preset, by its `"type"`: `curve`, `pan-tilt`, `pixel`, or any other
 /// (also none), which lights nothing.
 // (the effects are not boxed: there are few of them, and they are matched on as they are)
 #[allow(clippy::large_enum_variant)]
@@ -1403,7 +1397,7 @@ pub enum Effect {
 }
 
 impl Effect {
-    /// Reads it like Jackson reads an effect.
+    /// Reads it from its JSON.
     pub fn from_json(json: &Json) -> Result<Effect, String> {
         let at = At::root();
         effect(json, &at)?.ok_or_else(|| at.error("expected an effect, not null"))
@@ -1441,7 +1435,7 @@ impl<'de> serde::Deserialize<'de> for Effect {
     }
 }
 
-// The class of an effect is named by the first "type" which is a text (a number and a boolean
+// The kind of an effect is named by the first "type" which is a text (a number and a boolean
 // count as their text), wherever it is written. A name nobody knows, also none, is an unknown
 // effect.
 fn effect(json: &Json, at: &At) -> Read<Effect> {
@@ -1465,7 +1459,7 @@ fn effect(json: &Json, at: &At) -> Read<Effect> {
 }
 
 bean! {
-    /// What every effect has (the fields of `Effect`).
+    /// What every effect has.
     pub struct EffectBase {
         "uuid" => uuid: Option<String> = None, text;
         /// Not played by the engine. A channel nobody knows is None.
@@ -1475,15 +1469,15 @@ bean! {
 }
 
 bean! {
-    /// An effect of a type the engine does not know (`EffectUnknown`).
+    /// An effect of a type the engine does not know.
     pub struct EffectUnknown extends base: EffectBase {
-        /// The type the designer gave it.
+        /// The type as it is written.
         "type" => type_: Option<String> = None, text;
     }
 }
 
 bean! {
-    /// A curve on capabilities and channels (`EffectCurve`), and the timing of every other effect.
+    /// A curve on capabilities and channels, and the timing of every other effect.
     pub struct EffectCurve extends base: EffectBase {
         "curveType" => curve_type: String = "sine".to_string(), text;
         "capabilities" => capabilities: Vec<FixtureCapability> = Vec::new(), list(bean::<FixtureCapability>);
@@ -1505,14 +1499,14 @@ bean! {
         "phasingBeats" => phasing_beats: f64 = 0.0, num;
         "phasingCycles" => phasing_cycles: f64 = 1.0, num;
         "phasingGroupSize" => phasing_group_size: f64 = 1.0, num;
-        /// "none", also for an empty one (`setFanMode`).
+        /// "none", also for an empty one.
         "fanMode" => fan_mode: String = "none".to_string(), text_or("none");
         "panTiltInDegrees" => pan_tilt_in_degrees: bool = false, boolean_w;
     }
 }
 
 bean! {
-    /// A movement of the moving heads (`EffectPanTilt`), on the timing of a curve.
+    /// A movement of the moving heads, on the timing of a curve.
     pub struct EffectPanTilt extends curve: EffectCurve {
         /// "circle", also for an empty one.
         "shape" => shape: String = "circle".to_string(), text_or("circle");
@@ -1522,8 +1516,7 @@ bean! {
 }
 
 bean! {
-    /// A pixel effect (`EffectPixel`), on the timing of a curve. A text which is empty keeps its
-    /// default, like the setters of the Java class.
+    /// A pixel effect, on the timing of a curve. A text which is empty keeps its default.
     pub struct EffectPixel extends curve: EffectCurve {
         "pattern" => pattern: String = "chase".to_string(), text_or("chase");
         "size" => size: f64 = 0.25, num;
@@ -1559,7 +1552,7 @@ bean! {
 }
 
 bean! {
-    /// The channels of a profile a curve runs on (`EffectCurveProfileChannels`).
+    /// The channels of a profile a curve runs on.
     pub struct EffectCurveProfileChannels {
         "profileUuid" => profile_uuid: Option<String> = None, text;
         "channels" => channels: Vec<String> = Vec::new(), list(text);
@@ -1567,12 +1560,12 @@ bean! {
 }
 
 bean! {
-    /// The palette of a pixel effect (`PixelPalette`).
+    /// The palette of a pixel effect.
     pub struct PixelPalette {
         "stops" => stops: Vec<PixelPaletteStop> = Vec::new(), list(bean::<PixelPaletteStop>);
         "between" => between: String = "smooth".to_string(), text;
         "repeat" => repeat: String = "mirror".to_string(), text;
-        /// Which palette of the designer it was taken from, or "preset" (`ref` in the JSON).
+        /// The name of the palette it was taken from, or "preset" (`ref` in the JSON).
         "ref" => ref_: Option<String> = None, text;
     }
 }
@@ -1588,21 +1581,21 @@ impl PixelPalette {
 }
 
 bean! {
-    /// A color of a palette at its place (`PixelPaletteStop`).
+    /// A color of a palette at its place.
     pub struct PixelPaletteStop {
         "position" => position: f64 = 0.0, num;
         "color" => color: String = "#000000".to_string(), text;
     }
 }
 
-// 3 bytes for each pixel or else 1 (setChannels)
+// 3 bytes for each pixel or else 1
 fn bitmap_channels(json: &Json, at: &At) -> Read<i32> {
     Ok(int_w(json, at)?.map(|channels| if channels == 3 { 3 } else { 1 }))
 }
 
 bean! {
-    /// The picture of a text or an image of a pixel effect (`PixelBitmap`), as it is written: the
-    /// frames are not decoded.
+    /// The picture of a text or an image of a pixel effect, as it is written: the frames are not
+    /// decoded.
     pub struct PixelBitmap {
         "width" => width: i32 = 0, int_w;
         "height" => height: i32 = 0, int_w;
@@ -1621,7 +1614,7 @@ bean! {
 // ---------------------------------------------------------------------------------------------
 
 bean! {
-    /// A scene (`Scene`).
+    /// A scene.
     pub struct Scene {
         "uuid" => uuid: Option<String> = None, text;
         "name" => name: Option<String> = None, text;
@@ -1644,7 +1637,7 @@ bean! {
 }
 
 bean! {
-    /// A folder of the scenes (`SceneFolder`).
+    /// A folder of the scenes.
     pub struct SceneFolder {
         "uuid" => uuid: Option<String> = None, text;
         "name" => name: Option<String> = None, text;
@@ -1653,13 +1646,13 @@ bean! {
     }
 }
 
-// the beats of a bar: 4 for none (setTimeSignatureUpper)
+// the beats of a bar: 4 for none
 fn time_signature_upper(json: &Json, at: &At) -> Read<i32> {
     Ok(int(json, at)?.map(|upper| if upper > 0 { upper } else { 4 }))
 }
 
 bean! {
-    /// A composition (`Composition`).
+    /// A composition.
     pub struct Composition {
         "name" => name: Option<String> = None, text;
         "uuid" => uuid: Option<String> = None, text;
@@ -1677,7 +1670,7 @@ bean! {
 }
 
 bean! {
-    /// A marker on the timeline (`CompositionMarker`): a "label" or a "hold".
+    /// A marker on the timeline: a "label" or a "hold".
     pub struct CompositionMarker {
         "uuid" => uuid: Option<String> = None, text;
         "name" => name: Option<String> = None, text;
@@ -1695,7 +1688,7 @@ impl CompositionMarker {
 }
 
 bean! {
-    /// A track of the timeline (`Track`).
+    /// A track of the timeline.
     pub struct Track {
         "uuid" => uuid: Option<String> = None, text;
         "name" => name: Option<String> = None, text;
@@ -1705,7 +1698,7 @@ bean! {
 }
 
 bean! {
-    /// A scene on the timeline (`ScenePlaybackRegion`).
+    /// A scene on the timeline.
     pub struct ScenePlaybackRegion {
         "sceneUuid" => scene_uuid: Option<String> = None, text;
         "startMillis" => start_millis: f64 = 0.0, num;
@@ -1715,7 +1708,7 @@ bean! {
 }
 
 bean! {
-    /// A hold the timeline played through (`CompositionHold`).
+    /// A hold the timeline played through.
     pub struct CompositionHold {
         "positionMillis" => position_millis: f64 = 0.0, num;
         "heldMillis" => held_millis: f64 = 0.0, num;
@@ -1723,7 +1716,7 @@ bean! {
 }
 
 bean! {
-    /// A DMX channel held at a value (`DmxOverride`).
+    /// A DMX channel held at a value.
     pub struct DmxOverride {
         "universeUuid" => universe_uuid: Option<String> = None, text;
         /// Counted from 0.
@@ -1737,7 +1730,7 @@ bean! {
 // ---------------------------------------------------------------------------------------------
 
 json_enum! {
-    /// `FixtureProfile.FixtureCategory`.
+    /// A category of a fixture profile, with the names of the fixture library.
     pub enum FixtureCategory from 0 {
         Blinder = "Blinder",
         ColorChanger = "Color Changer",
@@ -1768,7 +1761,7 @@ pub type FixtureProfileTemplateChannels = OrderedMap<FixtureChannel>;
 pub type FixtureProfileWheels = OrderedMap<FixtureWheel>;
 
 bean! {
-    /// A fixture profile (`FixtureProfile`).
+    /// A fixture profile.
     pub struct FixtureProfile {
         "uuid" => uuid: Option<String> = None, text;
         "name" => name: Option<String> = None, text;
@@ -1784,14 +1777,14 @@ bean! {
 }
 
 bean! {
-    /// A wheel of a profile (`FixtureWheel`).
+    /// A wheel of a profile.
     pub struct FixtureWheel {
         "slots" => slots: Vec<FixtureWheelSlot> = Vec::new(), list(bean::<FixtureWheelSlot>);
     }
 }
 
 json_enum! {
-    /// `FixtureWheelSlot.FixtureWheelSlotType`.
+    /// The type of a slot of a wheel, with the names of the fixture library.
     pub enum FixtureWheelSlotType from 0 {
         Open = "Open",
         Closed = "Closed",
@@ -1806,7 +1799,7 @@ json_enum! {
 }
 
 bean! {
-    /// A slot of a wheel (`FixtureWheelSlot`).
+    /// A slot of a wheel.
     pub struct FixtureWheelSlot {
         "type" => type_: Option<FixtureWheelSlotType> = None, enumeration::<FixtureWheelSlotType>;
         "name" => name: Option<String> = None, text;
@@ -1814,11 +1807,10 @@ bean! {
     }
 }
 
-// The channels of a mode (FixtureModeChannelListDeserializer): the name of a channel, or an object
-// for the channels of the pixels. Anything else (null in the fixture library) is a channel
-// nobody uses.
+// The channels of a mode: the name of a channel, or an object for the channels of the pixels.
+// Anything else (null in the fixture library) is a channel nobody uses.
 fn mode_channels(json: &Json, at: &At) -> Read<Vec<FixtureModeChannel>> {
-    // like the loop over a JsonNode: the items of an array, the values of an object, or nothing
+    // the items of an array, the values of an object, or nothing
     let items: Vec<&Json> = match json {
         Json::Null => return Ok(None),
         Json::Array(items) => items.iter().collect(),
@@ -1840,7 +1832,7 @@ fn mode_channels(json: &Json, at: &At) -> Read<Vec<FixtureModeChannel>> {
 }
 
 bean! {
-    /// A mode of a profile (`FixtureMode`).
+    /// A mode of a profile.
     pub struct FixtureMode {
         "name" => name: Option<String> = None, text;
         "shortName" => short_name: Option<String> = None, text;
@@ -1848,7 +1840,7 @@ bean! {
     }
 }
 
-// a list of texts, or a single text (StringOrListDeserializer)
+// a list of texts, or a single text
 fn string_or_list(json: &Json, at: &At) -> Read<Vec<String>> {
     match json {
         Json::Null => Ok(None),
@@ -1865,8 +1857,8 @@ fn string_or_list(json: &Json, at: &At) -> Read<Vec<String>> {
 }
 
 bean! {
-    /// A channel of a mode (`FixtureModeChannel`): one of the profile by its name, the channels of
-    /// the pixels (`repeatFor`), or none (no name and nothing repeated).
+    /// A channel of a mode: one of the profile by its name, the channels of the pixels
+    /// (`repeatFor`), or none (no name and nothing repeated).
     pub struct FixtureModeChannel {
         "name" => name: String = String::new(), text;
         "insert" => insert: Option<String> = None, text;
@@ -1878,7 +1870,7 @@ bean! {
 }
 
 bean! {
-    /// A channel of a profile (`FixtureChannel`).
+    /// A channel of a profile.
     pub struct FixtureChannel {
         "fineChannelAliases" => fine_channel_aliases: Vec<String> = Vec::new(), list(text);
         /// A DMX value or a percentage ("50%"), as it is written (a number in its digits).
@@ -1891,7 +1883,7 @@ bean! {
 
 impl FixtureChannel {
     /// How much the DMX values a profile gives the channel are multiplied by to be in the
-    /// resolution of the channel with all of its fine channels (`getResolutionMultiplier`).
+    /// resolution of the channel with all of its fine channels.
     pub fn get_resolution_multiplier(channel: Option<&FixtureChannel>) -> f64 {
         let Some(channel) = channel else {
             return 1.0;
@@ -1916,7 +1908,7 @@ impl FixtureChannel {
     }
 
     /// A capability with its range in the full resolution of its channel, or the capability
-    /// itself, if it is written in it (`getCapabilityInFullResolution`).
+    /// itself, if it is written in it.
     pub fn get_capability_in_full_resolution(
         capability: &FixtureCapability,
         multiplier: f64,
@@ -1926,7 +1918,7 @@ impl FixtureChannel {
             _ => return Cow::Borrowed(capability),
         };
         let mut scaled = capability.clone();
-        // cut to an int like the cast of Java (which stops at the ends of the ints as well)
+        // cut off towards zero, saturating at the ends of the i32
         scaled.dmx_range = Some(vec![
             (range[0] as f64 * multiplier) as i32,
             (range[1] as f64 * multiplier + multiplier - 1.0) as i32,
@@ -1936,7 +1928,7 @@ impl FixtureChannel {
 }
 
 json_enum! {
-    /// `FixtureCapability.FixtureCapabilityType`, numbered from 0.
+    /// The type of a capability, with the names of the fixture library, numbered from 0.
     pub enum FixtureCapabilityType from 0 {
         NoFunction = "NoFunction",
         ShutterStrobe = "ShutterStrobe",
@@ -1985,7 +1977,8 @@ json_enum! {
 }
 
 json_enum! {
-    /// `FixtureCapability.FixtureCapabilityColor`, numbered from 1 (0 is free for "none").
+    /// The color of a capability, with the names of the fixture library, numbered from 1 (0 is
+    /// free for "none").
     pub enum FixtureCapabilityColor from 1 {
         Red = "Red",
         Green = "Green",
@@ -2003,14 +1996,15 @@ json_enum! {
     }
 }
 
-/// The wheel a capability names (`FixtureCapability.wheel`, an `Object` in Java).
+/// The wheel a capability names (`wheel`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Wheel {
     /// The name of a wheel.
     Name(String),
-    /// Several wheels (e.g. shaken together), each like `String.valueOf` gives it.
+    /// Several wheels (e.g. shaken together). A name which is not written as a text is taken as
+    /// its text.
     Names(Vec<String>),
-    /// Anything else (a number, a boolean, an object): the Java engine takes it for none.
+    /// Anything else (a number, a boolean, an object), which names no wheel.
     Other,
 }
 
@@ -2029,14 +2023,14 @@ fn wheel(json: &Json, _at: &At) -> Read<Wheel> {
     Ok(match json {
         Json::Null => None,
         Json::String(name) => Some(Wheel::Name(name.clone())),
-        Json::Array(names) => Some(Wheel::Names(names.iter().map(java_value_of).collect())),
+        Json::Array(names) => Some(Wheel::Names(names.iter().map(value_text).collect())),
         _ => Some(Wheel::Other),
     })
 }
 
 bean! {
-    /// A capability of a channel (`FixtureCapability`). The properties of the fixture library are
-    /// kept as it writes them (e.g. "10deg", "wide", "3200K").
+    /// A capability of a channel. The properties of the fixture library are kept as it writes them
+    /// (e.g. "10deg", "wide", "3200K").
     pub struct FixtureCapability {
         "type" => type_: Option<FixtureCapabilityType> = None, enumeration::<FixtureCapabilityType>;
         "color" => color: Option<FixtureCapabilityColor> = None, enumeration::<FixtureCapabilityColor>;
@@ -2085,18 +2079,18 @@ bean! {
 }
 
 bean! {
-    /// The pixels of a profile (`FixtureMatrix`).
+    /// The pixels of a profile.
     pub struct FixtureMatrix {
         /// The keys of the pixels by Z, Y and X. None where there is no pixel.
         "pixelKeys" => pixel_keys: Option<Vec<Vec<Vec<Option<String>>>>> = None, list(list(list_opt(text)));
         /// The number of pixels on X, Y and Z, for a matrix without keys.
         "pixelCount" => pixel_count: Option<Vec<i32>> = None, list(int_w);
-        /// The groups in the order the browser keeps them in (see [`read_pixel_groups`]).
+        /// The groups in the order they are played in (see [`read_pixel_groups`]).
         "pixelGroups" => pixel_groups: Option<Vec<FixtureMatrixPixelGroup>> = None, pixel_groups;
     }
 }
 
-/// A group of pixels of a matrix (`FixtureMatrixPixelGroup`).
+/// A group of pixels of a matrix.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct FixtureMatrixPixelGroup {
     pub name: String,
@@ -2106,7 +2100,7 @@ pub struct FixtureMatrixPixelGroup {
     pub constraints: Option<FixtureMatrixPixelGroupConstraints>,
 }
 
-/// What the pixels of a group have to meet (`FixtureMatrixPixelGroupConstraints`).
+/// What the pixels of a group have to meet.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct FixtureMatrixPixelGroupConstraints {
     /// The pixel keys themselves, in the order of the group.
@@ -2126,7 +2120,8 @@ fn pixel_groups(json: &Json, at: &At) -> Read<Vec<FixtureMatrixPixelGroup>> {
     }
 }
 
-// a name the browser takes for the index of an array (e.g. "2", but not "02" or "-1")
+// a name which is a whole number up to 4294967294, written plainly (e.g. "2", but not "02" or
+// "-1")
 fn array_index(name: &str) -> Option<u64> {
     let canonical = name == "0" || (!name.starts_with('0') && !name.is_empty() && name.len() <= 10);
     if !canonical || !name.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -2135,9 +2130,9 @@ fn array_index(name: &str) -> Option<u64> {
     name.parse::<u64>().ok().filter(|index| *index <= 4_294_967_294)
 }
 
-/// The pixel groups of a matrix (`FixtureMatrixPixelGroupListDeserializer`), in the order the
-/// browser keeps the names of an object in: the names of array indices ("1", "2") first and by
-/// their number, all other names as they are written. Anything but an object has no groups.
+/// The pixel groups of a matrix, in the order of the project format: the names which are whole
+/// numbers ("1", "2") first and by their number, then all other names as they are written.
+/// Anything but an object has no groups.
 pub fn read_pixel_groups(json: &Json) -> Result<Vec<FixtureMatrixPixelGroup>, String> {
     let properties = json.properties();
     let mut indices: Vec<(u64, &str, &Json)> = Vec::new();
@@ -2157,7 +2152,7 @@ pub fn read_pixel_groups(json: &Json) -> Result<Vec<FixtureMatrixPixelGroup>, St
         .collect()
 }
 
-// what the browser takes for false in a condition
+// what counts as no definition: nothing, null, false, 0 and the empty text
 fn is_falsy(json: Option<&Json>) -> bool {
     match json {
         None | Some(Json::Null) | Some(Json::Bool(false)) => true,
@@ -2178,9 +2173,9 @@ fn texts_of(json: Option<&Json>) -> Result<Vec<String>, String> {
     }
 }
 
-/// A group like the fixture library defines it (`readGroup`): "all", an array of pixel keys or an
-/// object of constraints, also wrapped as `{ isAll: <definition>, constraints: null }` like the
-/// designers before stored it. A group without a definition has no pixels.
+/// A group like the fixture library defines it: "all", an array of pixel keys or an object of
+/// constraints, also wrapped as `{ isAll: <definition>, constraints: null }`, as older projects
+/// store it. A group without a definition has no pixels.
 pub fn read_pixel_group(name: &str, data: Option<&Json>) -> Result<FixtureMatrixPixelGroup, String> {
     let mut group = FixtureMatrixPixelGroup {
         name: name.to_string(),
@@ -2215,7 +2210,7 @@ pub fn read_pixel_group(name: &str, data: Option<&Json>) -> Result<FixtureMatrix
     match data {
         // an array of pixel keys
         Json::Array(_) => constraints.keys = Some(texts_of(Some(data))?),
-        // an object of constraints (designers before also stored the empty keys)
+        // an object of constraints (older projects also store the empty keys)
         Json::Object(_) => {
             constraints.x = Some(texts_of(data.get("x"))?);
             constraints.y = Some(texts_of(data.get("y"))?);
@@ -2233,7 +2228,7 @@ pub fn read_pixel_group(name: &str, data: Option<&Json>) -> Result<FixtureMatrix
 }
 
 bean! {
-    /// The physical entry of a profile (`FixturePhysical`).
+    /// The physical entry of a profile.
     pub struct FixturePhysical {
         /// In mm.
         "dimensions" => dimensions: Option<Vec<f64>> = None, list(num);
@@ -2244,8 +2239,8 @@ bean! {
 // Reading
 // ---------------------------------------------------------------------------------------------
 
-/// Reads a project, like `DesignerJson.MAPPER.readValue(json, Project.class)`. The project is
-/// taken as it is written: its version is not checked and nothing is migrated.
+/// Reads a project. The project is taken as it is written: its version is not checked and nothing
+/// is migrated.
 pub fn parse_project(json: &str) -> Result<Project, String> {
     Project::from_json(&Json::parse(json)?)
 }
@@ -2257,14 +2252,13 @@ pub fn parse_profile(json: &str) -> Result<FixtureProfile, String> {
 
 /// Replaces the profiles of a project which are named like the fixture library
 /// (`{"$profile": "stairville/mh-100"}`) by the profile the passed function loads (its JSON), with
-/// the name as its uuid (`resolveProfiles` of the conformance test of Java). The order of the
-/// names is kept, which the profiles are played in: read the project with [`Json::parse`] and
-/// hand the result to [`Project::from_json`].
+/// the name as its uuid. The order of the names is kept, which the profiles are played in: read
+/// the project with [`Json::parse`] and hand the result to [`Project::from_json`].
 pub fn resolve_profiles_json(project: &mut Json, load: &dyn Fn(&str) -> Option<String>) -> Result<(), String> {
     if !matches!(project, Json::Object(_)) {
         return Err(format!("expected a project, not {}", kind(project)));
     }
-    // like the loop over a JsonNode: the items of an array, the values of an object, or nothing
+    // the items of an array, the values of an object, or nothing
     let profiles: Vec<Json> = match project.get("fixtureProfiles") {
         Some(Json::Array(items)) => items.clone(),
         Some(profiles @ Json::Object(_)) => profiles
@@ -2299,7 +2293,7 @@ pub fn resolve_profiles_json(project: &mut Json, load: &dyn Fn(&str) -> Option<S
 /// The same as [`resolve_profiles_json`] on a value of `serde_json`. Mind that such a value has
 /// lost the order of its names (the pixel groups of a matrix, the channels and the wheels of a
 /// profile), unless `serde_json` is built with `preserve_order`, and that it reads the numbers
-/// less exactly than Java does: prefer [`resolve_profiles_json`].
+/// less exactly: prefer [`resolve_profiles_json`].
 pub fn resolve_profiles(project: &mut serde_json::Value, load: &dyn Fn(&str) -> Option<String>) -> Result<(), String> {
     let serde_json::Value::Object(properties) = project else {
         return Err("expected a project, not anything else".to_string());

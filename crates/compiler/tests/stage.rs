@@ -1,6 +1,4 @@
-//! The stage geometry against the tests of the Java engine (`PanTiltTest`, `FanTest`,
-//! `ArcTangentTest`), the specs of the designer (`pan-tilt.spec.ts`, `pixel-stage.spec.ts`,
-//! `arc-tangent.spec.ts`, `fan.spec.ts`) and values recorded from the Java classes themselves.
+//! The stage geometry against worked examples and recorded values.
 
 use std::collections::BTreeSet;
 use std::f64::consts::PI;
@@ -39,7 +37,7 @@ fn assert_bits(actual: f64, expected: u64) {
     );
 }
 
-// Math.round(value * 1000) / 1000 of the specs
+// to three decimals, rounded half up
 fn round(values: &[f64]) -> Vec<f64> {
     values
         .iter()
@@ -83,7 +81,7 @@ fn sine_stays_within_a_digit_of_the_sine_of_the_platform() {
 fn sine_is_exact_on_the_quarters() {
     assert_bits(sin_cycle(0.0), 0.0f64.to_bits());
     assert_bits(sin_cycle(0.25), 1.0f64.to_bits());
-    // the second half of the cycle is the first one negated: -0.0, as in Java
+    // the second half of the cycle is the first one negated: -0.0
     assert_bits(sin_cycle(0.5), (-0.0f64).to_bits());
     assert_bits(sin_cycle(0.75), (-1.0f64).to_bits());
     assert_bits(sin_cycle(1.0), 0.0f64.to_bits());
@@ -96,8 +94,8 @@ fn sine_is_exact_on_the_quarters() {
 }
 
 #[test]
-fn sine_comes_out_like_the_one_of_java() {
-    // CycleSine.sin of these, to the last digit
+fn sine_comes_out_as_recorded() {
+    // the recorded sines of these, to the last digit
     assert_bits(sin_cycle(0.1), 0x3fe2cf2304755a5e);
     assert_bits(sin_cycle(0.125), 0x3fe6a09e667f3bcd);
     assert_bits(sin_cycle(1.0 / 3.0), 0x3febb67ae8584cab);
@@ -111,12 +109,11 @@ fn sine_comes_out_like_the_one_of_java() {
 
 #[test]
 fn arc_tangent_comes_out_like_the_one_of_fdlibm() {
-    // ArcTangentTest.comesOutLikeTheStrictArcTangent, arc-tangent.spec.ts
     assert_eq!(atan2(0.9267919362380059, 0.37557516814108993), 1.1857790291288564);
     assert_eq!(atan(1.0), PI / 4.0);
     assert_eq!(atan(-1.0), -PI / 4.0);
 
-    // ArcTangent.atan and atan2 of these, to the last digit
+    // the recorded arc tangents of these, to the last digit
     assert_bits(atan(0.3), 0x3fd2a73a661eaf06);
     assert_bits(atan(0.5), 0x3fddac670561bb4f);
     assert_bits(atan(0.9), 0x3fe77338a80603be);
@@ -135,7 +132,7 @@ fn arc_tangent_comes_out_like_the_one_of_fdlibm() {
 
 #[test]
 fn arc_tangent_stays_within_a_digit_of_the_one_of_the_platform() {
-    // the sweep of arc-tangent.spec.ts
+    // over many magnitudes
     for i in 0..500 {
         let y = (f64::from(i) * 1.7).sin() * 10f64.powi((i % 7) - 3);
         let x = (f64::from(i) * 2.3).cos() * 10f64.powi((i % 5) - 2);
@@ -176,7 +173,6 @@ fn arc_tangent_stays_within_a_digit_of_the_one_of_the_platform() {
 
 #[test]
 fn arc_tangent_takes_every_range_of_numbers_and_the_axes() {
-    // ArcTangentTest.takesEveryRangeOfNumbersAndTheAxes
     for x in [1e-12, 0.1, 0.5, 0.9, 1.0, 1.5, 3.0, 1e30] {
         assert_close(atan(x), x.atan(), 1e-15);
         assert_close(atan(-x), -x.atan(), 1e-15);
@@ -194,7 +190,7 @@ fn arc_tangent_takes_every_range_of_numbers_and_the_axes() {
 }
 
 #[test]
-fn arc_tangent_takes_the_special_cases_like_java() {
+fn arc_tangent_takes_the_special_cases() {
     // x == 1 is the arc tangent of y alone
     for y in [-7.5, -1.0, -0.3, -0.0, 0.0, 1e-12, 0.5, 1.0, 2.0, 1e30] {
         assert_bits(atan2(y, 1.0), atan(y).to_bits());
@@ -227,7 +223,6 @@ fn arc_tangent_takes_the_special_cases_like_java() {
 
 #[test]
 fn arc_tangent_takes_the_edges_of_its_ranges() {
-    // ArcTangentTest.takesTheEdgesOfItsRangesLikeTheStrictArcTangent
     for edge in [0.4375f64, 0.6875, 1.1875, 2.4375] {
         for x in [edge, f64::from_bits(edge.to_bits() - 1)] {
             assert_close(atan(x), x.atan(), 1e-15);
@@ -240,7 +235,6 @@ fn arc_tangent_takes_the_edges_of_its_ranges() {
 
 #[test]
 fn turns_by_the_quarters_exactly() {
-    // pan-tilt.spec.ts: should turn by the quarters exactly
     assert_eq!(
         get_rotation_matrix([0.0, 0.0, 0.0]),
         [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
@@ -280,8 +274,8 @@ fn turns_by_the_quarters_exactly() {
 }
 
 #[test]
-fn rotation_matrix_comes_out_like_the_one_of_java() {
-    // PanTilt.getRotationMatrix({10, 20, 30})
+fn rotation_matrix_comes_out_as_recorded() {
+    // the recorded matrix of a turn by 10, 20 and 30 degrees
     let matrix = get_rotation_matrix([10.0, 20.0, 30.0]);
     let expected: [[u64; 3]; 3] = [
         [0x3fea0aa16f5e991a, 0xbfde11f642522d1a, 0x3fd5e3a8748a0bf5],
@@ -297,8 +291,7 @@ fn rotation_matrix_comes_out_like_the_one_of_java() {
 }
 
 #[test]
-fn places_the_fixtures_like_the_preview_of_the_designer() {
-    // PanTiltTest.placesTheFixturesLikeThePreviewOfTheDesigner
+fn places_the_fixtures_in_their_rows_and_by_hand() {
     let fixtures = [
         fixture("a", "topFront"),
         fixture("c", "bottomBack"),
@@ -319,8 +312,7 @@ fn places_the_fixtures_like_the_preview_of_the_designer() {
 }
 
 #[test]
-fn places_the_fixtures_like_the_3d_preview() {
-    // pan-tilt.spec.ts: should place the fixtures like the 3D preview
+fn spreads_the_fixtures_of_a_row_over_the_width_of_the_stage() {
     let fixtures = [
         fixture("a", "topFront"),
         fixture("b", "topFront"),
@@ -368,7 +360,7 @@ fn places_the_fixtures_like_the_3d_preview() {
 }
 
 #[test]
-fn places_only_what_java_places() {
+fn places_only_the_fixtures_of_a_row_or_placed_by_hand() {
     let stage = StageSize::default();
     assert_eq!(
         stage,
@@ -496,7 +488,6 @@ fn counts_a_fixture_coming_back_later_once_more() {
 
 #[test]
 fn aims_a_hanging_head_at_a_spot() {
-    // PanTiltTest.aimsAHangingHeadAtASpot, pan-tilt.spec.ts
     let straight_down = get_aim_degrees(&hanging(), [0.0, 0.0, 0.0]);
     assert_bits(straight_down.pan, 0);
     assert_bits(straight_down.tilt, 0);
@@ -529,7 +520,7 @@ fn aims_a_hanging_head_at_a_spot() {
     };
     assert_close(get_aim_degrees(&standing, [0.0, 405.4, 0.0]).tilt, 0.0, 1e-9);
 
-    // a head turned on every axis, like PanTilt.getAimDegrees works it out
+    // a head turned on every axis, as recorded
     let turned = StagePlacement {
         position: [100.0, 367.0, 230.0],
         rotation: [10.0, 20.0, 30.0],
@@ -543,7 +534,7 @@ fn aims_a_hanging_head_at_a_spot() {
 
 #[test]
 fn places_the_parts_of_a_preset_along_the_stage() {
-    // FanTest: from the left to the right, from the front (towards z) to the back, from the bottom to the top
+    // from the left to the right, from the front (towards z) to the back, from the bottom to the top
     let positions = [[-100.0, 0.0, 200.0], [100.0, 300.0, -200.0], [0.0, 100.0, 0.0]];
     assert_eq!(stage_fan_places(&positions, "left-right"), [0.0, 1.0, 0.5]);
     assert_eq!(stage_fan_places(&positions, "front-back"), [0.0, 1.0, 0.5]);
@@ -552,7 +543,7 @@ fn places_the_parts_of_a_preset_along_the_stage() {
     // all at the same place
     assert!(stage_fan_places(&[[0.0; 3], [0.0; 3]], "left-right")[0].is_nan());
 
-    // fan.spec.ts
+    // two of them at the same height
     let positions = [[-100.0, 400.0, 200.0], [300.0, 400.0, -100.0], [100.0, 0.0, 0.0]];
     assert_eq!(stage_fan_places(&positions, "left-right"), [0.0, 1.0, 0.5]);
     assert_eq!(stage_fan_places(&positions, "front-back"), [0.0, 1.0, 2.0 / 3.0]);
@@ -569,7 +560,7 @@ fn places_the_parts_of_a_preset_along_the_stage() {
 }
 
 #[test]
-fn fans_the_edge_cases_like_java() {
+fn fans_the_edge_cases() {
     // none and a single one
     assert!(stage_fan_places(&[], "left-right").is_empty());
     let alone = stage_fan_places(&[[5.0, 6.0, 7.0]], "bottom-top");
@@ -580,7 +571,7 @@ fn fans_the_edge_cases_like_java() {
     let positions = [[1.0, 0.0, 0.0], [3.0, 0.0, 0.0], [2.0, 0.0, 0.0]];
     assert_eq!(stage_fan_places(&positions, "preset"), [0.0, 1.0, 0.5]);
 
-    // a place which is not a number leaves none of them told apart (Math.min and Math.max keep the NaN)
+    // a place which is not a number leaves none of them told apart (the lowest and the highest are none either)
     let positions = [[1.0, 0.0, 0.0], [f64::NAN, 0.0, 0.0], [2.0, 0.0, 0.0]];
     assert!(stage_fan_places(&positions, "left-right")
         .iter()
@@ -596,7 +587,6 @@ fn fans_the_edge_cases_like_java() {
 
 #[test]
 fn a_fresh_place_is_the_one_pixel_of_a_fixture() {
-    // the defaults of PixelContext
     assert_eq!(
         PixelPlace::default(),
         PixelPlace {
@@ -736,7 +726,7 @@ fn places_a_part_in_its_fixture() {
 }
 
 #[test]
-fn tells_a_pixel_from_a_group_like_java() {
+fn tells_a_pixel_from_a_group() {
     let group = [(1, 1), (2, 1)];
 
     assert_eq!(PixelPosition::of(3, 2, &group), PixelPosition::Own { x: 3, y: 2 });
@@ -760,13 +750,12 @@ fn place_in(column: i32, columns: i32) -> PixelPlace {
 
 #[test]
 fn makes_the_housing_as_large_as_the_profile_says_or_as_large_as_its_pixels_need() {
-    // pixel-stage.spec.ts
     assert_eq!(housing_size(Some(&[1057.0, 154.0, 64.0]), 12, 1), [105.7, 15.4, 6.4]);
     assert_eq!(housing_size(None, 12, 2), [96.0, 16.0, 7.0]);
     // a size of 0 is none
     assert_eq!(housing_size(Some(&[0.0, 50.0, 0.0]), 3, 1), [24.0, 5.0, 7.0]);
 
-    // what Java can hold: no dimensions, fewer than three, more than three, a NaN
+    // no dimensions, fewer than three, more than three, a NaN
     assert_eq!(housing_size(Some(&[]), 3, 2), [24.0, 16.0, 7.0]);
     assert_eq!(housing_size(Some(&[300.0]), 3, 2), [30.0, 16.0, 7.0]);
     assert_eq!(housing_size(Some(&[300.0, 20.0]), 3, 2), [30.0, 2.0, 7.0]);
@@ -793,7 +782,6 @@ fn hangs_the_housing_below_the_truss() {
 
 #[test]
 fn places_the_leds_on_the_front_of_the_housing() {
-    // pixel-stage.spec.ts
     let size = [24.0, 8.0, 6.0];
     let hanging = StagePlacement {
         position: [100.0, 367.0, 230.0],
@@ -825,7 +813,7 @@ fn places_the_leds_on_the_front_of_the_housing() {
         [0.0, 192.0, 3.0]
     );
 
-    // a housing turned on every axis, like PixelStage.position works it out
+    // a housing turned on every axis, as recorded
     let turned = StagePlacement {
         position: [100.0, 367.0, 230.0],
         rotation: [10.0, 20.0, 30.0],
@@ -882,7 +870,7 @@ fn places_a_part_on_the_stage() {
 }
 
 #[test]
-fn rounds_to_millimeters_like_java() {
+fn rounds_to_millimeters() {
     assert_eq!(millimeters(1.24), 12);
     assert_eq!(millimeters(1.25), 13);
     assert_eq!(millimeters(-1.25), -12);
@@ -900,7 +888,7 @@ fn rounds_to_millimeters_like_java() {
 
 #[test]
 fn puts_the_leds_into_the_columns_and_rows_of_one_picture() {
-    // pixel-stage.spec.ts: two bars of three pixels, a meter apart, seen from the front
+    // two bars of three pixels, a meter apart, seen from the front
     let positions: Vec<[f64; 3]> = [-208.0, -200.0, -192.0, -108.0, -100.0, -92.0]
         .iter()
         .map(|&x| [x, 371.0, 233.0])
@@ -922,7 +910,6 @@ fn puts_the_leds_into_the_columns_and_rows_of_one_picture() {
 
 #[test]
 fn sees_the_leds_from_above_and_finds_a_single_one_in_the_middle() {
-    // pixel-stage.spec.ts
     let positions = [[0.0, 371.0, -230.0], [0.0, 39.0, 230.0], [100.0, 39.0, 230.0]];
     let places = pixel_places(&positions, "top");
 
@@ -957,12 +944,10 @@ fn sees_the_leds_from_above_and_finds_a_single_one_in_the_middle() {
     assert!(places[1].x > 0.25 && places[1].x < 0.26);
 }
 
-// ---- the same doubles as Java ----
+// ---- the same doubles over a sweep ----
 //
-// Each sweep below was run on the Java classes as well (JDK 21, the methods of ArcTangent,
-// CycleSine, PanTilt, Fan and PixelStage as they are, getPixelPlace with its arguments passed), on
-// the same inputs from the same generator. The numbers are the checksums over the bits of
-// everything Java returned (Double.doubleToLongBits), so a single differing digit shows.
+// Each sweep below runs on inputs from a generator with a fixed seed. The numbers are the recorded
+// checksums over the bits of everything that came out, so a single differing digit shows.
 
 struct Sweep {
     state: u64,
@@ -1001,7 +986,7 @@ impl Sweep {
     }
 
     fn mix(&mut self, value: f64) {
-        // Double.doubleToLongBits: every NaN is the same
+        // every NaN is the same
         let bits = if value.is_nan() {
             0x7ff8000000000000
         } else {
@@ -1044,7 +1029,7 @@ impl Sweep {
 }
 
 #[test]
-fn the_sine_is_the_one_of_java_over_a_sweep() {
+fn the_sine_is_as_recorded_over_a_sweep() {
     let mut sweep = Sweep::new(1);
 
     for _ in 0..200_000 {
@@ -1061,7 +1046,7 @@ fn the_sine_is_the_one_of_java_over_a_sweep() {
 }
 
 #[test]
-fn the_arc_tangent_is_the_one_of_java_over_a_sweep() {
+fn the_arc_tangent_is_as_recorded_over_a_sweep() {
     let mut sweep = Sweep::new(2);
 
     for _ in 0..200_000 {
@@ -1084,7 +1069,7 @@ fn the_arc_tangent_is_the_one_of_java_over_a_sweep() {
 }
 
 #[test]
-fn the_rotations_and_aims_are_the_ones_of_java_over_a_sweep() {
+fn the_rotations_and_aims_are_as_recorded_over_a_sweep() {
     let mut sweep = Sweep::new(4);
 
     for _ in 0..50_000 {
@@ -1114,7 +1099,7 @@ fn the_rotations_and_aims_are_the_ones_of_java_over_a_sweep() {
 }
 
 #[test]
-fn the_placements_are_the_ones_of_java_over_a_sweep() {
+fn the_placements_are_as_recorded_over_a_sweep() {
     let mut sweep = Sweep::new(6);
 
     for _ in 0..200 {
@@ -1183,7 +1168,7 @@ fn the_placements_are_the_ones_of_java_over_a_sweep() {
 }
 
 #[test]
-fn the_parts_are_on_the_stage_where_java_has_them_over_a_sweep() {
+fn the_parts_are_on_the_stage_as_recorded_over_a_sweep() {
     let mut sweep = Sweep::new(7);
 
     for _ in 0..50_000 {
@@ -1239,7 +1224,7 @@ fn the_parts_are_on_the_stage_where_java_has_them_over_a_sweep() {
 }
 
 #[test]
-fn the_pictures_are_the_ones_of_java_over_a_sweep() {
+fn the_pictures_are_as_recorded_over_a_sweep() {
     let mut sweep = Sweep::new(8);
 
     for _ in 0..2_000 {
@@ -1272,7 +1257,7 @@ fn the_pictures_are_the_ones_of_java_over_a_sweep() {
 }
 
 #[test]
-fn the_fans_are_the_ones_of_java_over_a_sweep() {
+fn the_fans_are_as_recorded_over_a_sweep() {
     let mut sweep = Sweep::new(9);
     let orders = ["left-right", "front-back", "bottom-top", "preset"];
 
@@ -1306,7 +1291,7 @@ fn the_fans_are_the_ones_of_java_over_a_sweep() {
 }
 
 #[test]
-fn the_parts_are_in_their_fixtures_where_java_has_them_over_a_sweep() {
+fn the_parts_are_in_their_fixtures_as_recorded_over_a_sweep() {
     let mut sweep = Sweep::new(10);
 
     for _ in 0..50_000 {

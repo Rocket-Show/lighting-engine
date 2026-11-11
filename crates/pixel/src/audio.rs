@@ -1,4 +1,4 @@
-//! The audio a pixel effect follows at a moment (`PixelAudio` of Rocket Show).
+//! The audio a pixel effect follows at a moment.
 //!
 //! The host analyzes the audio of the composition in frames of 20 ms. A frame holds [`FRAME_LENGTH`] values, all in dB
 //! (0 at full scale): how loud it is (the [`RMS`] and the [`PEAK`]), how loud the [`BASS`], the [`MID`]s and the
@@ -18,8 +18,8 @@
 //! - the wave of the audio (the pattern `scope`) shows the level up to `25 + 225 × size` frames ago, which is 250
 //!   frames for a size of 1, each with its envelope of 50 frames before it
 //!
-//! A size above 1 (which the designer does not set) reaches further back: `75 + 225 × size` frames. Frames the host
-//! does not have anymore are silent, nothing else happens.
+//! A size above 1 (which is out of its range) reaches further back: `75 + 225 × size` frames. Frames the host does
+//! not have anymore are silent, nothing else happens.
 
 use core::cell::Cell;
 
@@ -77,7 +77,7 @@ impl AudioFrames for Silence {
     }
 }
 
-/// What an effect sets for the audio it follows (`PixelAudio.Settings`, the defaults of `EffectPixel`).
+/// What an effect sets for the audio it follows.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AudioSettings {
     /// What of the audio it follows (`audioBand`).
@@ -93,7 +93,7 @@ pub struct AudioSettings {
 }
 
 impl AudioSettings {
-    /// The defaults of `EffectPixel`.
+    /// The defaults of a pixel effect.
     pub const DEFAULT: AudioSettings = AudioSettings {
         band: AudioBand::Full,
         gain_db: 0.0,
@@ -109,8 +109,7 @@ impl Default for AudioSettings {
     }
 }
 
-/// How loud an audio is between 0 (as quiet as the floor or quieter) and 1 (at full scale), with the gain
-/// (`PixelAudio.levelOf`).
+/// How loud an audio is between 0 (as quiet as the floor or quieter) and 1 (at full scale), with the gain.
 pub fn level_of(db: f32, settings: &AudioSettings) -> f32 {
     let floor = minf(settings.floor_db, -1.0);
 
@@ -272,8 +271,8 @@ mod tests {
         frame
     }
 
-    // PixelAudio.envelope in doubles
-    fn java_envelope(
+    // the envelope of a value of the frames at a frame, in doubles
+    fn envelope_in_doubles(
         frame: impl Fn(i64) -> Option<AudioFrame>,
         value_index: usize,
         frame_index: i64,
@@ -380,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn follows_the_audio_like_java() {
+    fn follows_the_audio_as_in_doubles() {
         // louder and quieter again, with a gap of frames which are missing
         let frame = |index: i64| {
             if (130..140).contains(&index) {
@@ -424,7 +423,7 @@ mod tests {
             for frame_index in [0i64, 1, 7, 49, 50, 51, 120, 135, 145, 200, 1000] {
                 let frames = Recorded::new(frame);
                 let audio = PixelAudio::new(&frames, frame_index as u64 * 20_000 + 7_000, settings);
-                let expected = java_envelope(frame, value_index, frame_index, &settings);
+                let expected = envelope_in_doubles(frame, value_index, frame_index, &settings);
 
                 assert!(
                     (audio.level() as f64 - expected).abs() < 2e-6,
@@ -433,7 +432,7 @@ mod tests {
                 );
 
                 for ago in [0, 1, 10, 60, 250] {
-                    let expected = java_envelope(frame, value_index, frame_index - ago as i64, &settings);
+                    let expected = envelope_in_doubles(frame, value_index, frame_index - ago as i64, &settings);
 
                     assert!(
                         (audio.level_ago(ago) as f64 - expected).abs() < 2e-6,
@@ -443,7 +442,7 @@ mod tests {
 
                 for band in [-1, 0, 5, 15, 16] {
                     let expected =
-                        java_envelope(frame, FIRST_BAND + band.clamp(0, 15) as usize, frame_index, &settings);
+                        envelope_in_doubles(frame, FIRST_BAND + band.clamp(0, 15) as usize, frame_index, &settings);
 
                     assert!(
                         (audio.band(band) as f64 - expected).abs() < 2e-6,

@@ -1,6 +1,5 @@
 //! The conformance cases of the pixel patterns (`conformance/cases/pixel-pattern.json`): a pattern at pixels and
-//! moments, through a palette. The expected values are the ones of the designer and of Rocket Show (`pixelPattern()`
-//! of `DesignerConformanceTest`), worked out in doubles.
+//! moments, through a palette. The recorded values come from double precision.
 //!
 //! - The brightness and the color become 8 bit DMX values: they may differ by 1/255.
 //! - The place in the palette is compared modulo 2 (see `engine_pixel::pattern`), where the palette is back where it
@@ -22,8 +21,8 @@ const TOLERANCE: f64 = 1.0 / 255.0;
 /// tells a place which is off from one which is rounded.
 const PLACE_TOLERANCE: f64 = 2e-3;
 
-/// The samples which differ from Rocket Show by more than the tolerance, because single precision lands on the other
-/// side of an edge than double precision does: (the name of the case, the index of the sample, why).
+/// The samples which differ from the recorded values by more than the tolerance, because single precision lands on
+/// the other side of an edge than double precision does: (the name of the case, the index of the sample, why).
 ///
 /// All of them are pixels of the wave of the audio (`scope`) of the case "scope 5", whose size of 0.957 spreads
 /// 25 + floor(0.957 * 225) = 240 frames of the audio over the pixels. A pixel shows the level
@@ -34,7 +33,7 @@ const PLACE_TOLERANCE: f64 = 2e-3;
 /// 2 / 240 = 0.00833 with each frame: that is the difference, a bit more than two steps of a DMX channel. With the
 /// audio it is the level of the frame before or after.
 ///
-/// Rocket Show is no more right than the float here: in sample 5 its own double falls below the whole number.
+/// The double is no more right than the float here: in sample 5 it falls below the whole number itself.
 /// (Sample 13, a matrix of 3 columns, goes the other way as well, 39.99999999999999 against 40.000004, but its pixel
 /// is dark either way.)
 const ALLOWED: &[(&str, usize, &str)] = &[
@@ -68,7 +67,7 @@ fn text<'a>(node: &'a Value, key: &str) -> Option<&'a str> {
     node.get(key).and_then(Value::as_str)
 }
 
-// a number of the project, the default where it is missing or null (like DesignerJson reads it)
+// a number of the project, the default where it is missing or null
 fn number(node: &Value, key: &str, default: f64) -> f64 {
     node.get(key).and_then(Value::as_f64).unwrap_or(default)
 }

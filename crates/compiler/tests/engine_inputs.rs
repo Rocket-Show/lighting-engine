@@ -205,7 +205,7 @@ fn scenes_picked_by_hand_fade_in_real_time() {
     assert_eq!(player.now(1000)[11], 255);
     assert!(!player.engine.live_idle(1000));
 
-    // its dimmer on the Play screen
+    // the dimmer it is given by hand
     player.engine.live_dimmer(0, 0.5);
     assert_eq!(player.now(1500)[11], 127);
     player.engine.live_dimmer(0, 1.0);

@@ -1,5 +1,5 @@
 //! The `channelValues` conformance cases: a project and how it is played in, the value of every channel of every
-//! fixture and pixel at each time out, compared with what the designer recorded (see `conformance/README.md`).
+//! fixture and pixel at each time out, compared with the recorded values (see `conformance/README.md`).
 //!
 //! The recorded values come from double precision, the engine computes in single precision: a value may differ by
 //! up to 1 (of 255, or of 65535 for a channel with a fine channel), which channel has a value at all must match.
@@ -42,7 +42,7 @@ const EXPLAINED: &[(&str, &[&str], &str)] = &[
     (
         "white and amber from the colors, and the color temperature as a color",
         &["rgbwa"],
-        "the green left over once the amber LED took its part is 0: a hair below 0 in doubles, which Rocket Show takes as no value",
+        "the green left over once the amber LED took its part is 0: a hair below 0 in doubles, which the recorded values take as no value",
     ),
     ("comet-2", &["matrix-groups/Top", "matrix-groups/Corners"], "the place in the palette is exactly on the border of two stepped stops"),
     ("image-1", &["matrix/4", "matrix/8", "matrix/12"], "the scrolled image is exactly on the border of two of its pixels"),

@@ -59,14 +59,14 @@ pub mod feature {
 
 /// The number of a name which isn't there (null in the project).
 pub const NAME_NONE: u16 = 0;
-/// The number of the empty name, which counts as none where the designer says so.
+/// The number of the empty name, which counts as none where a name may be left empty.
 pub const NAME_EMPTY: u16 = 1;
 
 pub fn no_name(name: u16) -> bool {
     name == NAME_NONE || name == NAME_EMPTY
 }
 
-/// The types of the capabilities, numbered like the designer lists them.
+/// The types of the capabilities of the fixture library, numbered in the order the compiler lists them in.
 pub mod ty {
     pub const NO_FUNCTION: u8 = 0;
     pub const SHUTTER_STROBE: u8 = 1;
@@ -115,7 +115,7 @@ pub mod ty {
     pub const NONE: u8 = 255;
 }
 
-/// The colors of the capabilities, numbered like the designer lists them (0: none).
+/// The colors of the capabilities, numbered in the order the compiler lists them in (0: none).
 pub mod color {
     pub const NONE: u8 = 0;
     pub const RED: u8 = 1;
@@ -306,7 +306,7 @@ record!(
     /// Where everything is.
     Root {
         master_dimmer: f32,
-        /// the composition open in the designer, whose tempo a preview follows (-1: none)
+        /// the composition selected in the project, whose tempo a preview follows (-1: none)
         selected_composition: i32,
         fixtures: List<Fixture>,
         parts: List<Part>,

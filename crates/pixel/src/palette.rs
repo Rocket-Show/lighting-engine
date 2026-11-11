@@ -1,5 +1,4 @@
-//! The palette of a pixel effect: the colors a pattern gives its pixels, from the place it puts them at
-//! (`PixelPalette` of Rocket Show).
+//! The palette of a pixel effect: the colors a pattern gives its pixels, from the place it puts them at.
 //!
 //! # Stops as bytes
 //!
@@ -13,12 +12,12 @@
 //! | 12     | `f32` | blue                          |
 //!
 //! The stops are **sorted by their position** (the ones on the same position in the order the project lists them):
-//! Rocket Show sorts them for every color it reads, here the compiler does it once (`encode_stops` of the `std`
-//! feature, or [`sort_stops`]).
+//! the compiler does it once (`encode_stops` of the `std` feature, or [`sort_stops`]), so that it is not done for
+//! every color which is read.
 //!
 //! # The palette of the preset
 //!
-//! An effect without a palette of its own (`ref: "preset"`, the default of `EffectPixel`) takes the shades of the
+//! An effect without a palette of its own (`ref: "preset"`, the default of a pixel effect) takes the shades of the
 //! color the preset puts on each pixel: [`shades_of`] that color, with [`Between::Smooth`] and [`Repeat::Mirror`]
 //! unless the palette says otherwise.
 
@@ -120,10 +119,10 @@ fn float_at(bytes: &[u8], offset: usize) -> Option<f32> {
     Some(f32::from_le_bytes(bytes.try_into().ok()?))
 }
 
-/// The color at a place of a palette, as red, green and blue between 0 and 1 (`PixelPalette.colorOf`). The palette
-/// repeats beyond 0 and 1: [`Repeat::Wrap`] starts over at every whole number, [`Repeat::Mirror`] runs back and forth
-/// (and is back where it was after 2). So a place only counts modulo 2, which
-/// [`sample`](crate::pattern::sample) makes use of. No stops are black.
+/// The color at a place of a palette, as red, green and blue between 0 and 1. The palette repeats beyond 0 and 1:
+/// [`Repeat::Wrap`] starts over at every whole number, [`Repeat::Mirror`] runs back and forth (and is back where it
+/// was after 2). So a place only counts modulo 2, which [`sample`](crate::pattern::sample) makes use of. No stops are
+/// black.
 ///
 /// The stops have to be sorted by their position.
 pub fn color_of(stops: &Stops<'_>, between: Between, repeat: Repeat, place: f32) -> [f32; 3] {
@@ -181,7 +180,7 @@ pub fn color_of(stops: &Stops<'_>, between: Between, repeat: Repeat, place: f32)
 
 /// A part of a color as one of its 256 steps over 255, like a color written as `#rrggbb` and read again.
 fn through_hex(component: f32) -> f32 {
-    // (rounded like Math.round: half a step goes up, and what is not a number is 0)
+    // (half a step goes up, and what is not a number is 0)
     let step = libm::floorf(clamp01(component) * 255.0 + 0.5);
 
     if step.is_nan() {
@@ -191,9 +190,9 @@ fn through_hex(component: f32) -> f32 {
     }
 }
 
-/// The shades of a color (red, green and blue between 0 and 1), for the palette which follows the color of the preset
-/// (`PixelPalette.shadesOf`): from the color itself most of the way to white. Like Rocket Show, which writes both
-/// colors as `#rrggbb`, both are rounded to the nearest of the 256 steps.
+/// The shades of a color (red, green and blue between 0 and 1), for the palette which follows the color of the
+/// preset: from the color itself most of the way to white. Both are rounded to the nearest of the 256 steps a color of
+/// a project has.
 pub fn shades_of(color: [f32; 3]) -> [Stop; 2] {
     let light = [
         color[0] + (1.0 - color[0]) * 0.75,
@@ -213,9 +212,8 @@ pub fn shades_of(color: [f32; 3]) -> [Stop; 2] {
     ]
 }
 
-/// Sorts stops by their position, the ones on the same position staying in their order (what `PixelPalette.colorOf`
-/// does for every color; a position which is not a number goes last). Without a heap, by insertion: for the load
-/// time, not for a frame.
+/// Sorts stops by their position, the ones on the same position staying in their order (a position which is not a
+/// number goes last). Without a heap, by insertion: for the load time, not for a frame.
 pub fn sort_stops(stops: &mut [Stop]) {
     for sorted in 1..stops.len() {
         let mut index = sorted;
@@ -235,7 +233,7 @@ pub fn sort_stops(stops: &mut [Stop]) {
     }
 }
 
-// Double.compare(a, b) > 0, for floats: a number which is none is above every other, -0 below 0
+// whether a is above b: what is not a number is above every number, -0 below 0
 fn comes_after(a: f32, b: f32) -> bool {
     if a.is_nan() {
         return !b.is_nan();
@@ -307,7 +305,7 @@ mod tests {
             color_of(&stops, Between::Smooth, Repeat::Mirror, -0.25),
             [0.5, 0.5, 0.0]
         );
-        // a place which is not a number: the last color, like in Java
+        // a place which is not a number: the last color
         assert_eq!(color_of(&stops, Between::Smooth, Repeat::Mirror, f32::NAN), BLUE);
     }
 
@@ -402,8 +400,8 @@ mod tests {
     }
 
     #[test]
-    fn makes_the_shades_of_a_color_like_the_designer() {
-        // #ff8000 and #ffdfbf (PixelPatternsTest)
+    fn makes_the_shades_of_a_color() {
+        // #ff8000 and #ffdfbf
         let shades = shades_of([1.0, 0.5, 0.0]);
 
         assert_eq!(
@@ -421,7 +419,7 @@ mod tests {
             }
         );
 
-        // out of range and not a number: like Math.max, Math.min and Math.round make of them
+        // out of range and not a number: the nearest end of the range, and 0
         let shades = shades_of([2.0, -1.0, f32::NAN]);
 
         assert_eq!(shades[0].color, [1.0, 0.0, 0.0]);

@@ -1,12 +1,12 @@
 # The compiled show format, version 1.0
 
-A compiled show is a project of the designer with everything fixed already worked out, laid out so the engine reads it
-in place. The compiler (`crates/compiler`) writes it, the core (`crates/core`) reads it. This document specifies the
-bytes; `concept.md`, section 6, says why the format is the way it is.
+A compiled show is a project with everything fixed already worked out, laid out so the engine reads it in place. The
+compiler (`crates/compiler`) writes it, the core (`crates/core`) reads it. This document specifies the bytes;
+`concept.md`, section 6, says why the format is the way it is.
 
-Status: version 1.0, 11 November 2026. No stick has been sold with it, so it may still change without a new major
-version until the first firmware is released. The tables of the records below are written from
-`crates/core/src/format.rs` by `tools/format-tables.py`, which CI checks.
+Status: version 1.0, 11 November 2026. No device has shipped with it, so it may still change without a new major version
+until the first firmware is released. The tables of the records below are written from `crates/core/src/format.rs` by
+`tools/format-tables.py`, which CI checks.
 
 ## 1. Conventions
 
@@ -65,7 +65,7 @@ bytes (`u32`). A reader skips a chunk whose type it doesn't know.
 | ------ | ------ | ---------------------------------------------------------------------------------------------- |
 | `SHOW` | yes    | the [Root](#root) record at its start, followed by all the lists the root and its records name |
 | `PTCH` | yes    | a [Patch](#patch) record for each fixture, in the order of the fixtures                        |
-| `PROJ` | no     | the project JSON as the designer wrote it, which the engine never reads                        |
+| `PROJ` | no     | the project JSON as it was compiled, which the engine never reads                              |
 
 The patch is a chunk of its own so that a new address at the venue rewrites only this chunk (and the checksum). What the
 compiler works out from the addresses stays as it was compiled: which parts are the same lamp (`same_lamp` of a
@@ -79,7 +79,7 @@ which were on two, or the other way round.
 2. **The minor version** counts additions a reader may skip: a new optional chunk, a new field in the reserved bytes of
    a record. A reader accepts any minor version.
 3. **A feature bit for each new ability** (section 4). The compiler sets only the bits a show uses, and a reader refuses
-   a show with a bit it doesn't know. This is what lets a newer designer write a show an older stick plays.
+   a show with a bit it doesn't know. This is what lets a newer compiler write a show an older engine plays.
 4. **The behaviour version** (12 in the header, `BEHAVIOUR_VERSION` in the core) counts up with every change of the
    engine which changes the values it comes to. A host can tell from it whether two engines play a show alike.
 
@@ -122,7 +122,7 @@ works the number out from the counts of the [Root](#root) (`engine::memory_words
 | 2 × `total_channels`                | the value and the state of each channel of each part   |
 | 2 × `max_part_channels`             | the values of a part before the effects following them |
 | the number of fixtures              | identify, reset and lamp on                            |
-| 2 × the number of scenes            | selected, and its dimmer on the Play screen            |
+| 2 × the number of scenes            | selected, and the dimmer it is given by hand           |
 | 18 × the number of scenes           | picked by hand and flashed                             |
 | 3 × `max_regions`                   | the beat each clip started on                          |
 | 4 × the larger of `max_holds` and 8 | the holds the timeline went through                    |
@@ -146,12 +146,12 @@ The compiler refuses a project beyond them.
 
 ## 8. Numbers with a meaning
 
-**Types of capabilities** (`ty`), numbered like the designer lists them: 0 NoFunction, 1 ShutterStrobe, 2 StrobeSpeed, 3
-StrobeDuration, 4 Intensity, 5 ColorIntensity, 6 ColorPreset, 7 ColorTemperature, 8 Pan, 9 PanContinuous, 10 Tilt, 11
-TiltContinuous, 12 PanTiltSpeed, 13 WheelSlot, 14 WheelShake, 15 WheelSlotRotation, 16 WheelRotation, 17 EffectSpeed, 18
-EffectDuration, 19 EffectParameter, 20 SoundSensitivity, 21 Focus, 22 Zoom, 23 Iris, 24 IrisEffect, 25 Frost, 26
-FrostEffect, 27 Prism, 28 PrismRotation, 29 BladeInsertion, 30 BladeRotation, 31 BladeSystemRotation, 32 Fog, 33
-FogOutput, 34 FogType, 35 BeamAngle, 36 Rotation, 37 Speed, 38 Time, 39 Maintenance, 40 Generic, 41 Effect, 42
+**Types of capabilities** (`ty`), numbered in the order the compiler lists them in: 0 NoFunction, 1 ShutterStrobe, 2
+StrobeSpeed, 3 StrobeDuration, 4 Intensity, 5 ColorIntensity, 6 ColorPreset, 7 ColorTemperature, 8 Pan, 9 PanContinuous,
+10 Tilt, 11 TiltContinuous, 12 PanTiltSpeed, 13 WheelSlot, 14 WheelShake, 15 WheelSlotRotation, 16 WheelRotation, 17
+EffectSpeed, 18 EffectDuration, 19 EffectParameter, 20 SoundSensitivity, 21 Focus, 22 Zoom, 23 Iris, 24 IrisEffect, 25
+Frost, 26 FrostEffect, 27 Prism, 28 PrismRotation, 29 BladeInsertion, 30 BladeRotation, 31 BladeSystemRotation, 32 Fog,
+33 FogOutput, 34 FogType, 35 BeamAngle, 36 Rotation, 37 Speed, 38 Time, 39 Maintenance, 40 Generic, 41 Effect, 42
 BeamPosition; 255 none or unknown.
 
 **Colors** (`color`): 0 none, 1 Red, 2 Green, 3 Blue, 4 Cyan, 5 Magenta, 6 Yellow, 7 Amber, 8 White, 9 Warm White, 10
@@ -302,7 +302,7 @@ Where everything is. 96 bytes.
 | Offset | Field | Type | Holds |
 | -----: | ----- | ---- | ----- |
 | 0 | `master_dimmer` | `f32` |  |
-| 4 | `selected_composition` | `i32` | the composition open in the designer, whose tempo a preview follows (-1: none) |
+| 4 | `selected_composition` | `i32` | the composition selected in the project, whose tempo a preview follows (-1: none) |
 | 8 | `fixtures` | list of [Fixture](#fixture) |  |
 | 16 | `parts` | list of [Part](#part) |  |
 | 24 | `layouts` | list of [Layout](#layout) |  |

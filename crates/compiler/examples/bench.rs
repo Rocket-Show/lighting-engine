@@ -1,6 +1,6 @@
 //! How long the compiler takes for a project and the core for a frame, on three rigs: 30 and 60 moving heads (17
 //! channels each) playing two scenes with fans, a chase, a movement and steps, and 16 matrices of 16 x 8 RGB pixels
-//! lit by a pixel effect (the rig of `DesignerFrameBenchmark` of Rocket Show).
+//! lit by a pixel effect.
 //!
 //!   cargo run --release -p lighting-engine-compiler --example bench
 
@@ -114,7 +114,7 @@ fn measure(name: &str, mut project: Value) {
     .expect("the profiles");
     let json = project.to_string();
 
-    // reading the JSON and compiling it, as an edit in the designer costs it
+    // reading the JSON and compiling it, as an edit of a project costs it
     let mut parse_times = Vec::new();
     let mut compile_times = Vec::new();
     let mut compiled = None;

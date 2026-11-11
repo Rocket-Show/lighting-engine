@@ -1,7 +1,7 @@
-//! The helpers of the profiles against what Java comes to: the regular expressions of the Java
-//! engine matched by hand, the numbers and the properties of the fixture library, the order of the
-//! pixel keys and the rules of the pixel groups (recorded from Java, see the tables at the end),
-//! and the wheels, the modes and the brightness of the profiles.
+//! The helpers of the profiles against recorded cases: the regular expressions matched by hand,
+//! the numbers and the properties of the fixture library, the order of the pixel keys and the
+//! rules of the pixel groups (see the tables at the end), and the wheels, the modes and the
+//! brightness of the profiles.
 
 use std::cmp::Ordering;
 
@@ -26,10 +26,10 @@ fn keys(pixels: &[Pixel]) -> Vec<&str> {
     pixels.iter().map(|pixel| pixel.key.as_str()).collect()
 }
 
-// ---- against Java ----
+// ---- against the recorded cases ----
 
 #[test]
-fn the_comments_of_maintenance_match_like_the_regular_expressions_of_java() {
+fn the_comments_of_maintenance_match_like_their_regular_expressions() {
     for (comment, expected) in MAINTENANCE {
         let actual = [
             maintenance_matches_exactly(MaintenanceAction::Reset, Some(comment)),
@@ -89,7 +89,8 @@ fn maintenance_names_its_actions() {
     );
 }
 
-// what Java reads and this doesn't: it has to be told apart from what both can't read
+// regular expressions which are valid but not supported: they have to be told apart from the
+// ones which can't be read at all
 const UNSUPPORTED_REGEXES: [&str; 8] = [
     "[a-c&&[b-d]]",
     "(?i)a",
@@ -102,17 +103,14 @@ const UNSUPPORTED_REGEXES: [&str; 8] = [
 ];
 
 #[test]
-fn the_regular_expressions_find_what_java_finds() {
+fn the_regular_expressions_find_what_is_recorded() {
     for (pattern, expected) in REGEXES {
         let actual: Result<String, String> = REGEX_TEXTS
             .iter()
             .map(|text| regex_find(pattern, text).map(|found| if found { '1' } else { '0' }))
             .collect();
         match expected {
-            None => assert!(
-                actual.is_err(),
-                "{pattern:?} can't be read by Java, but came to {actual:?}"
-            ),
+            None => assert!(actual.is_err(), "{pattern:?} can't be read, but came to {actual:?}"),
             Some(_) if UNSUPPORTED_REGEXES.contains(pattern) => {
                 assert!(actual.unwrap_err().contains("not supported"), "{pattern:?}");
             }
@@ -146,7 +144,7 @@ fn the_regular_expressions_find_what_java_finds() {
 }
 
 #[test]
-fn the_properties_of_the_fixture_library_lie_where_java_puts_them() {
+fn the_properties_of_the_fixture_library_lie_where_they_are_recorded() {
     for (text, rank, rotation_rank, nothing) in RANKS {
         assert_eq!(
             get_property_rank(Some(text)).map(f64::to_bits),
@@ -169,14 +167,14 @@ fn the_properties_of_the_fixture_library_lie_where_java_puts_them() {
 }
 
 #[test]
-fn the_numbers_of_the_fixture_library_are_read_like_java_reads_them() {
+fn the_numbers_of_the_fixture_library_are_read_as_recorded() {
     for (text, number) in NUMBERS {
         assert_eq!(parse_number(text).map(f64::to_bits), *number, "{text:?}");
     }
 }
 
 #[test]
-fn the_rules_of_the_pixel_groups_are_read_like_java_reads_them() {
+fn the_rules_of_the_pixel_groups_are_read_as_recorded() {
     for (rule, expected) in RULES {
         let actual: String = RULE_VALUES
             .iter()
@@ -191,7 +189,7 @@ fn the_rules_of_the_pixel_groups_are_read_like_java_reads_them() {
 }
 
 #[test]
-fn the_pixel_keys_are_sorted_like_java_sorts_them() {
+fn the_pixel_keys_are_sorted_as_recorded() {
     for (key1, row) in KEYS.iter().zip(KEY_ORDER) {
         for (key2, expected) in KEYS.iter().zip(row.chars()) {
             let expected = match expected {
@@ -205,7 +203,7 @@ fn the_pixel_keys_are_sorted_like_java_sorts_them() {
 }
 
 #[test]
-fn the_brightness_is_read_like_java_reads_it() {
+fn the_brightness_is_read_as_recorded() {
     for (brightness, without_lumens, with_lumens) in BRIGHTNESS {
         assert_eq!(
             get_brightness(Some(brightness), 0.0).map(f64::to_bits),
@@ -365,7 +363,7 @@ fn the_pixels_of_a_matrix_are_named_like_the_fixture_library_names_them() {
     assert_eq!(get_default_pixel_key(&[1, 1, 1], 1, 1, 1), "1");
     assert_eq!(get_default_pixel_key(&[3, 3, 1], 2, 3, 1), "(2, 3)");
     assert_eq!(get_default_pixel_key(&[3, 1, 3], 2, 1, 3), "(2, 3)");
-    // on a plane of Y and Z, Java names a pixel by its Y twice
+    // on a plane of Y and Z, a pixel is named by its Y twice
     assert_eq!(get_default_pixel_key(&[1, 3, 3], 1, 2, 3), "(2, 2)");
     assert_eq!(get_default_pixel_key(&[2, 2, 2], 1, 2, 3), "(1, 2, 3)");
 
@@ -550,7 +548,7 @@ fn the_slots_of_a_wheel_are_counted_around_it() {
         get_wheel_slot(wheel.unwrap(), 3).and_then(|slot| slot.name.as_deref()),
         Some("Blue")
     );
-    // the number before the first int is the last one, like in Java
+    // the number before the lowest i32 is the highest one (it wraps around)
     assert_eq!(
         get_wheel_slot(wheel.unwrap(), i32::MIN).and_then(|slot| slot.name.as_deref()),
         Some("Blue")
@@ -661,11 +659,10 @@ fn the_values_of_a_channel_follow_its_fine_channels() {
     );
 }
 
-// What Java comes to (JDK 21), recorded by running the regular expressions and the functions of
-// the Java engine themselves.
+// The recorded cases.
 
-// a comment of a capability, and whether it matches EXACTLY and AMONG of Maintenance: reset, lamp
-// on and lamp off of each
+// a comment of a capability, and whether it names an action exactly and among other things: reset,
+// lamp on and lamp off of each
 const MAINTENANCE: &[(&str, [bool; 6])] = &[
     ("reset", [true, false, false, true, false, false]),
     ("Reset", [true, false, false, true, false, false]),
@@ -747,8 +744,8 @@ const REGEX_TEXTS: &[&str] = &[
     "z", "-", "_", "q", "b\u{a}", "ba", "12", "xx",
 ];
 
-// a regular expression, and for each of the texts whether Java finds it in it (None for an
-// expression Java can't read)
+// a regular expression, and for each of the texts whether it is found in it (None for an
+// expression which can't be read)
 const REGEXES: &[(&str, Option<&str>)] = &[
     ("^[0-9]$", Some("1000000000000000000000000000000000000000")),
     ("[a-z]", Some("0010011111101111011001110101000010011101")),
@@ -838,8 +835,8 @@ const REGEXES: &[(&str, Option<&str>)] = &[
     ("\u{5c}\u{5c}", Some("0000000000000000000000000000001000000000")),
 ];
 
-// a property of the fixture library, with the bits of getPropertyRank and getRotationRank, and
-// isNothing
+// a property of the fixture library, with the bits of its rank and of its rotation rank, and
+// whether it is nothing
 const RANKS: &[(&str, Option<u64>, Option<u64>, bool)] = &[
     ("10deg", Some(0x4024000000000000), Some(0x4024000000000000), false),
     (" 10deg ", Some(0x4024000000000000), Some(0x4024000000000000), false),
@@ -946,7 +943,7 @@ const RANKS: &[(&str, Option<u64>, Option<u64>, bool)] = &[
     ("5deg\u{2028}", None, None, false),
 ];
 
-// the same texts with the bits of parseNumber
+// the same texts with the bits of the number they are read as
 const NUMBERS: &[(&str, Option<u64>)] = &[
     ("10deg", None),
     (" 10deg ", None),
@@ -1123,7 +1120,7 @@ const RULES: &[(&str, &str)] = &[
     ("=-007", "FFFFFFFFFFFFF"),
 ];
 
-// pixel keys, and how compareKeys puts each of them to each of them
+// pixel keys, and how each of them compares to each of them
 const KEYS: &[&str] = &[
     "",
     "1",
@@ -1217,7 +1214,8 @@ const KEY_ORDER: &[&str] = &[
     ">>>>>>>><<<<<<<<>>>><<<<<>>>>>>><<<<><<>>>==",
 ];
 
-// a brightness, with the bits of getBrightness without lumens to compare to and with 2000 of them
+// a brightness, with the bits of how bright it is without lumens to compare to and with 2000 of
+// them
 const BRIGHTNESS: &[(&str, Option<u64>, Option<u64>)] = &[
     ("off", Some(0x0000000000000000), Some(0x0000000000000000)),
     ("dark", Some(0x3f847ae147ae147b), Some(0x3f847ae147ae147b)),

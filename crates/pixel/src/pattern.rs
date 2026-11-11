@@ -1,27 +1,27 @@
 //! The patterns of the pixel effects: where a pattern puts a pixel in the palette and how bright it makes it, at a
-//! moment (`PixelPatterns` of Rocket Show, `pixel-pattern.ts` of the designer).
+//! moment.
 //!
 //! # The moment
 //!
-//! The moment is a [`Cycle`]: the periods of the effect since it started. Rocket Show counts them in a `double`;
-//! here the whole periods stay an integer wherever a pattern uses them:
+//! The moment is a [`Cycle`]: the periods of the effect since it started. The whole periods stay an integer wherever
+//! a pattern uses them:
 //!
 //! - what only depends on the part of the period (most of every pattern) reads [`Cycle::fract`]
 //! - the pass a pattern is in (the color of a chase, the slot of a sparkle, the cell of the noise of the fire) is the
-//!   exact integer, wrapped around at 32 bits where Rocket Show does so
+//!   exact integer, wrapped around at 32 bits where it goes into a hash
 //! - a decimal factor of the moment (`cycle * 0.7` of the plasma, `cycle * 2.2` of the fire) is worked out as a
 //!   fraction of whole numbers ([`Cycle::mul_ratio`]), the speed of a column of the rain (a hash) by the 32 bits of
 //!   the hash ([`Cycle::mul_u32_fraction`]), and the width of a color of the wipe, which comes from the size of the
 //!   effect, exactly for the float it is ([`Cycle::mul`])
 //!
-//! So a pattern looks the same after a billion periods as after three, wherever it does in Rocket Show.
+//! So a pattern looks the same after a billion periods as after three, wherever its formula repeats.
 //!
 //! # The place in the palette
 //!
 //! A place which grows with the periods (of the chase, the wipe, the flow, the shapes, the center and the stripes)
 //! is given **modulo 2**, between 0 and 2: a palette repeats after 1 ([`Repeat::Wrap`](crate::Repeat)) or after 2
 //! ([`Repeat::Mirror`](crate::Repeat)), so [`color_of`](crate::palette::color_of) gives the very same color for it,
-//! and the place does not lose its precision as a float. The other places are the ones of Rocket Show.
+//! and the place does not lose its precision as a float. The other places are given as they are.
 
 use crate::audio::{PixelAudio, BANDS};
 use crate::bitmap::Bitmap;
@@ -32,8 +32,7 @@ use crate::settings::{
 };
 
 /// The outline of a heart, as how far it is from its middle in each of 180 directions (the longest one being 1):
-/// (x² + y² - 1)³ = x² y³, found by halving the distance 24 times, like `PixelPatterns.heartOutline` does in doubles
-/// when it is loaded. A test works it out again.
+/// (x² + y² - 1)³ = x² y³, found by halving the distance 24 times in doubles. A test works it out again.
 pub(crate) const HEART_OUTLINE: [f32; 180] = [
     0.7890306, 0.80000526, 0.81130874, 0.82290494, 0.83475137, 0.8467991, 0.85899127, 0.8712636, 0.8835439, 0.89575154,
     0.90779763, 0.9195859, 0.93101245, 0.94196695, 0.952334, 0.96199423, 0.97082657, 0.9787102, 0.98552674, 0.9911633,
@@ -160,7 +159,7 @@ fn shape_distance(x: f32, y: f32, shape: Shape) -> f32 {
     }
 }
 
-// half of a difference of whole numbers, rounded down (Math.floor((a - b) / 2.0))
+// half of a difference of whole numbers, rounded down
 fn half_of_difference(a: i32, b: i32) -> i32 {
     a.wrapping_sub(b) >> 1
 }
@@ -261,7 +260,7 @@ fn set(out: &mut [f32; 5], place: f32, level: f32) {
     *out = [place, level, -1.0, 0.0, 0.0];
 }
 
-/// A pattern at a pixel and a moment (`PixelPatterns.sample`).
+/// A pattern at a pixel and a moment.
 ///
 /// - `out[0]`: where the pattern puts the pixel in the palette. Any number, the palette repeats; a place which grows
 ///   with the periods is given modulo 2 (see the module).
@@ -418,7 +417,7 @@ pub fn sample(
             );
         }
         Pattern::Fire => {
-            // flames rising from the bottom, embers flickering on a bar
+            // flames rising from the bottom, a glow flickering on a bar
             // (the place the fixture starts in the noise, (seed % 997) * 1.37, as a fraction of whole numbers)
             let offset = Cycle::from_whole(context.seed.checked_rem(997).unwrap_or(0) as i64).mul_ratio(137, 100);
 
@@ -749,7 +748,7 @@ pub fn sample(
                 }
             }
         }
-        // a pattern of a newer designer
+        // a pattern this engine doesn't know
         Pattern::Unknown => set(out, 0.0, 0.0),
     }
 
@@ -851,7 +850,7 @@ mod tests {
 
     #[test]
     fn knows_the_outline_of_a_heart() {
-        // PixelPatterns.heartOutline, in doubles
+        // the outline worked out again, in doubles
         let inside = |x: f64, y: f64| {
             let a = x * x + y * y - 1.0;
             a * a * a - x * x * y * y * y <= 0.0
@@ -889,7 +888,6 @@ mod tests {
 
     #[test]
     fn stacks_the_pixels_at_the_far_end_until_all_of_them_are_there() {
-        // (PixelPatternsTest)
         assert_eq!(
             levels(&settings(Pattern::Stack, Direction::Right), 0.3, 4),
             [0.0, 1.0, 0.0, 1.0]
@@ -906,7 +904,6 @@ mod tests {
 
     #[test]
     fn runs_pulses_from_the_middle_out_to_the_ends_of_a_bar() {
-        // (PixelPatternsTest)
         let early = levels(&settings(Pattern::Center, Direction::Out), 0.1, 9);
         let late = levels(&settings(Pattern::Center, Direction::Out), 0.9, 9);
 

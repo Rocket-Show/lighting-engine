@@ -10,7 +10,7 @@ publish = false
 [workspace.dependencies]
 libm = "0.2"
 serde = { version = "1", features = ["derive"] }
-# (the numbers as they are written and the objects in the order they are written in, like the designer reads them)
+# (the numbers as they are written and the objects in the order they are written in, as a project is read)
 serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
 
 [profile.release]

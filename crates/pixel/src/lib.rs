@@ -1,6 +1,5 @@
-//! The maths of the pixel patterns: where a pattern puts a pixel in the palette and how bright it makes it, at a
-//! moment. A port of `PixelMath`, `PixelPatterns`, `PixelPalette`, `PixelBitmap` and `PixelAudio` of Rocket Show
-//! (and of `pixel-*.ts` of the designer), in single precision.
+//! The maths of the pixel patterns, in single precision: where a pattern puts a pixel in the palette and how bright
+//! it makes it, at a moment.
 //!
 //! Rules of this crate (see section 5 of `concept.md`):
 //!

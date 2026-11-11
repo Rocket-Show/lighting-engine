@@ -1,4 +1,4 @@
-//! The defaults and the quirks of the Java model (and of Jackson reading it) the port follows.
+//! The defaults of the model and the rules its JSON is read by.
 
 use engine_compiler::model::*;
 
@@ -17,7 +17,7 @@ fn profile(text: &str) -> FixtureProfile {
 // ---- the JSON ----
 
 #[test]
-fn reads_the_numbers_like_java() {
+fn reads_the_numbers_to_the_closest_double() {
     for (text, expected) in [
         ("127.49999999999999", 127.49999999999999),
         ("96.66666666666667", 96.66666666666667),
@@ -76,7 +76,7 @@ fn reads_json_strictly() {
 fn keeps_the_properties_as_they_are_written() {
     let object = json(r#"{"b": 1, "a": 2, "b": 3}"#);
     assert_eq!(object.as_object().expect("an object").len(), 3);
-    // like a LinkedHashMap: at the first place, with the last value
+    // each name once: at the first place, with the last value
     assert_eq!(
         object
             .properties()
@@ -93,7 +93,7 @@ fn keeps_the_properties_as_they_are_written() {
 }
 
 #[test]
-fn writes_the_texts_of_scalars_like_jackson() {
+fn writes_the_texts_of_scalars() {
     let texts: Vec<Result<String, String>> =
         json(r#"["a", 1, 1.50, 1e2, true, null, 1e30, 0.1, 12345678.9, 1E-5, -0]"#)
             .as_array()
@@ -123,7 +123,7 @@ fn writes_the_texts_of_scalars_like_jackson() {
 }
 
 #[test]
-fn writes_doubles_like_java() {
+fn writes_doubles_in_their_shortest_digits() {
     for (value, expected) in [
         (1e7, "1.0E7"),
         (0.001, "0.001"),
@@ -139,21 +139,21 @@ fn writes_doubles_like_java() {
         (f64::NAN, "NaN"),
         (f64::NEG_INFINITY, "-Infinity"),
     ] {
-        assert_eq!(java_double_to_string(value), expected);
+        assert_eq!(double_to_text(value), expected);
     }
 }
 
 #[test]
-fn trims_like_java() {
-    assert_eq!(java_trim(" \t\r\n\u{0}a b\u{1f} "), "a b");
-    // a no-break space is not trimmed by Java
-    assert_eq!(java_trim("\u{a0}a\u{2028}"), "\u{a0}a\u{2028}");
+fn trims_the_controls_and_the_spaces() {
+    assert_eq!(trim_controls_and_spaces(" \t\r\n\u{0}a b\u{1f} "), "a b");
+    // a no-break space is not trimmed
+    assert_eq!(trim_controls_and_spaces("\u{a0}a\u{2028}"), "\u{a0}a\u{2028}");
 }
 
 // ---- the defaults ----
 
 #[test]
-fn a_project_without_anything_has_the_defaults_of_java() {
+fn a_project_without_anything_has_the_defaults() {
     let project = parse_project("{}").expect("a project");
     assert_eq!(project.version, 0);
     assert_eq!(project.uuid, None);
@@ -183,7 +183,7 @@ fn a_project_without_anything_has_the_defaults_of_java() {
 }
 
 #[test]
-fn a_preset_without_anything_has_the_defaults_of_java() {
+fn a_preset_without_anything_has_the_defaults() {
     let preset = preset("{}");
     assert_eq!(preset, Preset::default());
     assert_eq!(preset.uuid, None);
@@ -226,7 +226,7 @@ fn a_preset_without_anything_has_the_defaults_of_java() {
 }
 
 #[test]
-fn the_other_classes_have_the_defaults_of_java() {
+fn the_other_structs_have_their_defaults() {
     let fixture = Fixture::default();
     assert_eq!(
         (
@@ -452,10 +452,10 @@ fn the_last_of_two_properties_wins_but_null_never() {
 }
 
 #[test]
-fn the_setters_replace_empty_values() {
+fn some_fields_replace_empty_values() {
     assert_eq!(preset(r#"{"fanOrder": ""}"#).fan_order, "preset");
     assert_eq!(preset(r#"{"fanOrder": "left-right"}"#).fan_order, "left-right");
-    // a plain setter keeps an empty text
+    // any other field keeps an empty text
     assert_eq!(preset(r#"{"stepsOrder": "", "fadeInCurve": ""}"#).steps_order, "");
 
     let value = FixtureCapabilityValue::from_json(&json(r#"{"type": "Pan", "fan": []}"#)).unwrap();
@@ -553,9 +553,9 @@ fn the_setters_replace_empty_values() {
 }
 
 #[test]
-fn scalars_are_coerced_like_jackson_coerces_them() {
+fn scalars_are_coerced() {
     let fixture = |text: &str| Fixture::from_json(&json(text));
-    // an int
+    // a whole number
     assert_eq!(fixture(r#"{"dmxFirstChannel": 1.9}"#).unwrap().dmx_first_channel, 1);
     assert_eq!(fixture(r#"{"dmxFirstChannel": -1.9}"#).unwrap().dmx_first_channel, -1);
     assert_eq!(fixture(r#"{"dmxFirstChannel": 1e3}"#).unwrap().dmx_first_channel, 1000);
@@ -583,7 +583,7 @@ fn scalars_are_coerced_like_jackson_coerces_them() {
             "{wrong}"
         );
     }
-    // a double
+    // a number
     assert_eq!(fixture(r#"{"positionX": " 2.5 "}"#).unwrap().position_x, 2.5);
     assert_eq!(fixture(r#"{"positionX": "1e2"}"#).unwrap().position_x, 100.0);
     assert_eq!(fixture(r#"{"positionX": 7}"#).unwrap().position_x, 7.0);
@@ -641,7 +641,7 @@ fn scalars_are_coerced_like_jackson_coerces_them() {
     assert!(fixture(r#"{"name": ["a"]}"#).is_err());
     assert!(fixture(r#"{"name": {}}"#).is_err());
 
-    // a Double and a Boolean take an empty text for null
+    // a number and a boolean which may be left empty take an empty text for null
     let value = |text: &str| FixtureChannelValue::from_json(&json(text));
     assert_eq!(
         value(r#"{"value": "", "deactivated": ""}"#).unwrap(),
@@ -692,7 +692,7 @@ fn scalars_are_coerced_like_jackson_coerces_them() {
 // ---- the enums ----
 
 #[test]
-fn the_enums_have_the_names_and_the_numbers_of_java() {
+fn the_enums_have_their_names_and_their_numbers() {
     assert_eq!(FixtureCapabilityType::ALL.len(), 43);
     assert_eq!(FixtureCapabilityType::NoFunction.as_u8(), 0);
     assert_eq!(FixtureCapabilityType::Intensity.as_u8(), 4);
@@ -766,7 +766,7 @@ fn the_enums_have_the_names_and_the_numbers_of_java() {
 }
 
 #[test]
-fn enums_are_read_like_jackson_reads_them() {
+fn enums_are_read_by_name_or_by_place() {
     let color = |text: &str| {
         FixtureCapability::from_json(&json(&format!(r#"{{"color": {text}}}"#))).map(|capability| capability.color)
     };
@@ -998,7 +998,7 @@ fn the_wheel_of_a_capability_is_a_name_a_list_or_anything() {
         ]))
     );
     assert_eq!(wheel("[]"), Some(Wheel::Names(Vec::new())));
-    // like String.valueOf of what Jackson reads
+    // a name which is not written as a text is taken as its text
     assert_eq!(
         wheel(r#"["a", null, 1, 1.5, true, ["x", 2], {"k": "v"}, 1e2]"#)
             .and_then(|wheel| wheel.names().map(|names| names.join("|"))),
@@ -1019,7 +1019,7 @@ fn the_wheel_of_a_capability_is_a_name_a_list_or_anything() {
 }
 
 #[test]
-fn the_pixel_groups_come_in_the_order_of_the_browser() {
+fn the_pixel_groups_come_with_the_whole_numbers_first() {
     let profile = profile(
         r#"{"matrix": {"pixelCount": [4, 1, 1], "pixelGroups": {
             "Master": "all", "10": ["4"], "2": ["2", 3], "01": {"x": ["<=2"], "name": []}, "1": {"isAll": false, "constraints": ["1"]},
@@ -1313,7 +1313,7 @@ fn the_profiles_named_like_the_library_are_resolved() {
         );
     }
 
-    // a project without profiles gets none, like in Java
+    // a project without profiles gets an empty list of them
     let mut project = json(r#"{"name": "p"}"#);
     resolve_profiles_json(&mut project, &load).unwrap();
     assert_eq!(project, json(r#"{"name": "p", "fixtureProfiles": []}"#));

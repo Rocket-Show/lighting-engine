@@ -1,6 +1,6 @@
-//! The compiler: a project of the designer in, a compiled show for the core out.
+//! The compiler: a project in, a compiled show for the core out.
 //!
-//! Everything fixed is worked out here, once, in double precision and in the order Rocket Show works it out in: the
+//! Everything fixed is worked out here, once, in double precision and in a fixed order of operations: the
 //! parts of the fixtures with their channels and what each capability does, where the fixtures hang and where a spot
 //! points each of them, the place of each fixture in the chase, the fan and the pixel picture of each preset, when
 //! the clips of a timeline play. Names become numbers and times whole nanoseconds; a float of the project is rounded
@@ -188,8 +188,8 @@ fn fix(value: f64) -> i64 {
     (value * 4_294_967_296.0).round() as i64
 }
 
-/// Math.round of Java
-fn java_round(value: f64) -> i64 {
+/// rounded to the nearest whole number, a half up
+fn round_half_up(value: f64) -> i64 {
     if value.is_nan() {
         return 0;
     }
@@ -260,7 +260,7 @@ impl Names {
     }
 }
 
-// ---- the parts of the fixtures (the cached fixtures of Rocket Show) ----
+// ---- the parts of the fixtures ----
 
 #[derive(Clone)]
 struct CachedCap<'p> {
@@ -328,7 +328,7 @@ fn cached_cap<'p>(
     }
 
     let center = match cap.dmx_range.as_deref() {
-        // (worked out in single precision, like Rocket Show does)
+        // (the middle of a range is worked out in single precision)
         Some([low, high]) => ((low.wrapping_add(*high)) as f32 / 2f32).floor() as i32 as f64,
         _ => 0.0,
     };
@@ -916,7 +916,7 @@ fn chase_of(project: &Project, preset: &Preset) -> Chase {
 /// The place of a fixture in the pattern of its preset: its fixtures chase and fan in groups, in wings and repeated.
 fn pattern_place(index: i32, count: i32, group_size: f64, wings: f64, every: f64) -> (i32, i32) {
     let rounded = |value: f64, fallback: f64| {
-        java_round(if value == 0.0 || value.is_nan() {
+        round_half_up(if value == 0.0 || value.is_nan() {
             fallback
         } else {
             value
@@ -1049,7 +1049,7 @@ fn steps_are_phased(preset: &Preset, steps: &[PresetStep]) -> bool {
 
 /// the time the sequence of the steps is shifted by for a fixture of the preset, in ms
 fn steps_phasing(preset: &Preset, index: i32, count: i32, pass_millis: f64) -> f64 {
-    let group_size = java_round(preset.steps_phasing_group_size).max(1);
+    let group_size = round_half_up(preset.steps_phasing_group_size).max(1);
     let step = (index as f64 / group_size as f64).floor();
 
     if preset.steps_phasing_mode == "spread" {
@@ -1756,7 +1756,7 @@ impl<'p> Compiler<'p> {
         if value.program_number.is_some() {
             flags |= f::capv_flag::PROGRAM;
             record.program =
-                java_round(value.program_number.unwrap_or(0.0)).clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+                round_half_up(value.program_number.unwrap_or(0.0)).clamp(i32::MIN as i64, i32::MAX as i64) as i32;
         }
 
         if value.sound_controlled == Some(true) {
@@ -1774,7 +1774,7 @@ impl<'p> Compiler<'p> {
                     value: stop.value_percentage as f32,
                 })
                 .collect();
-            // (a stable sort, like the one of Rocket Show)
+            // (a stable sort: stops on the same place stay in their order)
             let mut order: Vec<usize> = (0..stops.len()).collect();
             order.sort_by(|a, b| {
                 stops[*a]
@@ -1908,8 +1908,8 @@ impl<'p> Compiler<'p> {
             phase_beats: fix(curve.phase_beats),
             phasing_beats: fix(curve.phasing_beats),
             phasing_cycles: fix(curve.phasing_cycles),
-            group_size: java_round(curve.phasing_group_size).clamp(1, u32::MAX as i64) as u32,
-            run_cycles: java_round(curve.run_cycles).clamp(1, u32::MAX as i64) as u32,
+            group_size: round_half_up(curve.phasing_group_size).clamp(1, u32::MAX as i64) as u32,
+            run_cycles: round_half_up(curve.run_cycles).clamp(1, u32::MAX as i64) as u32,
             amplitude: curve.amplitude as f32,
             position: curve.position as f32,
             duty: curve.duty_cycle as f32,
@@ -2604,7 +2604,7 @@ pub fn compile(project: &Project, options: &Options) -> Result<Compiled, Compile
     let mut max_regions = 0;
     let mut max_holds = 0;
 
-    // the scenes selected in the designer or picked by hand play all at once at most (picked and flashed)
+    // the scenes selected for a preview or picked by hand play all at once at most (picked and flashed)
     let scene_layers: usize = scene_presets.iter().map(Vec::len).sum();
     let scene_following: usize = scene_presets
         .iter()

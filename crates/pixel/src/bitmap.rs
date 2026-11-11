@@ -1,6 +1,6 @@
-//! The picture a pixel effect shows a text or an image with (`PixelBitmap` of Rocket Show): its pixels in frames (an
-//! animation has more than one), each pixel a brightness (a text, a byte each) or red, green and blue (an image, three
-//! bytes each), row by row from the top left.
+//! The picture a pixel effect shows a text or an image with: its pixels in frames (an animation has more than one),
+//! each pixel a brightness (a text, a byte each) or red, green and blue (an image, three bytes each), row by row from
+//! the top left.
 //!
 //! # The bytes of a bitmap
 //!
@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn reads_the_pixels_up_to_its_edges() {
-        // the bytes 10, 20, 30, 40 and 50 for 2 x 2 pixels (PixelBitmapTest)
+        // the bytes 10, 20, 30, 40 and 50 for 2 x 2 pixels
         let data = bytes(2, 2, 1, &[100.0], &[], 5, &[&[10, 20, 30, 40, 50]]);
         let bitmap = Bitmap::parse(&data).unwrap();
         let frame = bitmap.frame(0);

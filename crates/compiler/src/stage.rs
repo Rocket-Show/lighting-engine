@@ -1,17 +1,15 @@
 //! Where the fixtures and their pixels are on the stage, worked out once when a project is compiled.
 //!
-//! A port of the load-time geometry of the Java engine (`CycleSine`, `ArcTangent`, `PanTilt`, `Fan`,
-//! `PixelContext`, `PixelStage` and the pixel places of `DefaultDesignerService`). Everything is
-//! computed in `f64` with the same operations in the same order as the Java code, so the results
-//! are the same doubles, bit for bit. Nothing here reads the project model: every function takes
-//! plain arguments.
+//! Everything is computed in `f64` with the same operations in the same order, so the results
+//! don't depend on the machine: the sine and the arc tangent are worked out here and not left to
+//! the platform. Nothing here reads the project model: every function takes plain arguments.
 
-// the constants of fdlibm are kept digit for digit as the Java code has them
+// the constants of fdlibm are kept digit for digit
 #![allow(clippy::excessive_precision, clippy::approx_constant)]
 
 use std::collections::{BTreeSet, HashMap};
 
-// ---- the sine over a cycle (CycleSine.java) ----
+// ---- the sine over a cycle ----
 
 const S1: f64 = -1.66666666666666324348e-01;
 const S2: f64 = 8.33333333332248946124e-03;
@@ -27,30 +25,31 @@ const C4: f64 = -2.75573143513906633035e-07;
 const C5: f64 = 2.08757232129817482790e-09;
 const C6: f64 = -1.13596475577881948265e-11;
 
-/// `Math.PI` of Java.
-const JAVA_PI: f64 = std::f64::consts::PI;
+/// π as the standard library has it, for everything but the arc tangent (which has its own,
+/// with its low part).
+const STD_PI: f64 = std::f64::consts::PI;
 
-// the sine of an angle between -π/4 and π/4 (CycleSine.sine)
+// the sine of an angle between -π/4 and π/4
 fn sine(angle: f64, squared: f64) -> f64 {
     let cubed = squared * angle;
     let rest = S2 + squared * (S3 + squared * (S4 + squared * (S5 + squared * S6)));
     angle + cubed * (S1 + squared * rest)
 }
 
-// the cosine of an angle between -π/4 and π/4 (CycleSine.cosine)
+// the cosine of an angle between -π/4 and π/4
 fn cosine(squared: f64) -> f64 {
     let rest = squared * (C1 + squared * (C2 + squared * (C3 + squared * (C4 + squared * (C5 + squared * C6)))));
     1.0 - (0.5 * squared - squared * rest)
 }
 
-/// The sine over a cycle, sin(2π · position). Mirrors `CycleSine.sin`.
+/// The sine over a cycle, sin(2π · position).
 pub fn sin_cycle(position: f64) -> f64 {
     // the nearest quarter of the cycle and the angle left from it
     let quarter = (position * 4.0 + 0.5).floor();
-    let angle = 2.0 * JAVA_PI * (position - quarter / 4.0);
+    let angle = 2.0 * STD_PI * (position - quarter / 4.0);
     let squared = angle * angle;
 
-    // a Java cast: NaN is 0
+    // cut off towards zero: NaN is 0
     match (((quarter % 4.0) + 4.0) % 4.0) as i32 {
         0 => sine(angle, squared),
         1 => cosine(squared),
@@ -59,7 +58,7 @@ pub fn sin_cycle(position: f64) -> f64 {
     }
 }
 
-// ---- the arc tangent (ArcTangent.java) ----
+// ---- the arc tangent ----
 
 const ATAN_HI: [f64; 4] = [
     4.63647609000806093515e-1,
@@ -91,7 +90,7 @@ const AT: [f64; 11] = [
 const PI: f64 = 3.1415926535897931160e0;
 const PI_LO: f64 = 1.2246467991473531772e-16;
 
-/// The arc tangent of a number, between -π/2 and π/2. Mirrors `ArcTangent.atan`.
+/// The arc tangent of a number, between -π/2 and π/2.
 pub fn atan(value: f64) -> f64 {
     let sign: f64 = if value < 0.0 { -1.0 } else { 1.0 };
     let mut x = value.abs();
@@ -136,7 +135,7 @@ pub fn atan(value: f64) -> f64 {
     }
 }
 
-/// The angle of the point (x, y) from the x axis, between -π and π. Mirrors `ArcTangent.atan2`.
+/// The angle of the point (x, y) from the x axis, between -π and π.
 pub fn atan2(y: f64, x: f64) -> f64 {
     if x == 1.0 {
         return atan(y);
@@ -171,10 +170,10 @@ pub fn atan2(y: f64, x: f64) -> f64 {
     }
 }
 
-// ---- Math.min and Math.max of Java ----
+// ---- the lower and the higher of two numbers ----
 
-// Math.min: NaN if either is NaN, and -0.0 is below 0.0 (f64::min does neither)
-fn java_min(a: f64, b: f64) -> f64 {
+// the lower one: NaN if either is NaN, and -0.0 is below 0.0 (f64::min does neither)
+fn min_or_nan(a: f64, b: f64) -> f64 {
     if a.is_nan() {
         return a;
     }
@@ -190,8 +189,8 @@ fn java_min(a: f64, b: f64) -> f64 {
     }
 }
 
-// Math.max: NaN if either is NaN, and 0.0 is above -0.0
-fn java_max(a: f64, b: f64) -> f64 {
+// the higher one: NaN if either is NaN, and 0.0 is above -0.0
+fn max_or_nan(a: f64, b: f64) -> f64 {
     if a.is_nan() {
         return a;
     }
@@ -207,13 +206,13 @@ fn java_max(a: f64, b: f64) -> f64 {
     }
 }
 
-// ---- where the fixtures hang (PanTilt.java) ----
+// ---- where the fixtures hang ----
 
-/// Where the head of a moving head turns, below the place it is fastened at (`PanTilt.HEAD_OFFSET_CM`).
+/// Where the head of a moving head turns, below the place it is fastened at.
 pub const HEAD_OFFSET_CM: f64 = 5.4;
 
 /// Where a fixture hangs: its place on the stage (in cm, y up) and how it is turned (in degrees,
-/// x, y and z one after the other). Mirrors `PanTilt.StagePlacement`.
+/// x, y and z one after the other).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StagePlacement {
     pub position: [f64; 3],
@@ -221,22 +220,22 @@ pub struct StagePlacement {
 }
 
 impl StagePlacement {
-    /// The placement of a fixture `getStagePlacements` knows nothing about: all zeros, as
-    /// `DefaultDesignerService.getPartStagePosition` takes it.
+    /// The placement of a fixture [`stage_placements`] has none for: all zeros, as
+    /// [`part_stage_position`] takes it.
     pub const ORIGIN: StagePlacement = StagePlacement {
         position: [0.0; 3],
         rotation: [0.0; 3],
     };
 }
 
-/// Where a moving head points, in degrees from the middle of its ranges. Mirrors `PanTilt.Aim`.
+/// Where a moving head points, in degrees from the middle of its ranges.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Aim {
     pub pan: f64,
     pub tilt: f64,
 }
 
-/// What `getStagePlacements` reads of a `Fixture`: its uuid, its positioning (`topFront`,
+/// What [`stage_placements`] reads of a fixture: its uuid, its positioning (`topFront`,
 /// `bottomFront`, `topBack`, `bottomBack` or `manual`; anything else is placed nowhere) and where it
 /// was placed and turned by hand (`positionX/Y/Z`, `rotationX/Y/Z`).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -248,7 +247,7 @@ pub struct StageFixture<'a> {
 }
 
 /// The stage of a project, in cm (`stageWidthCm`, `stageHeightCm`, `stageDepthCm`,
-/// `stageFloorHeightCm`). The default is the one of a Java `Project`: 600, 350, 600, 30.
+/// `stageFloorHeightCm`). The default is the one of a project which doesn't say: 600, 350, 600, 30.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StageSize {
     pub width_cm: f64,
@@ -268,12 +267,13 @@ impl Default for StageSize {
     }
 }
 
-// the index of a quarter turn in the tables of sinDegrees and cosDegrees (a Java cast: NaN is 0)
+// the index of a quarter turn in the tables of sin_degrees and cos_degrees (cut off towards zero:
+// NaN is 0)
 fn quarter_index(degrees: f64) -> usize {
     ((((degrees / 90.0) % 4.0) + 4.0) % 4.0) as i32 as usize
 }
 
-/// The sine of an angle in degrees, exact on the quarters. Mirrors `PanTilt.sinDegrees`.
+/// The sine of an angle in degrees, exact on the quarters.
 pub fn sin_degrees(degrees: f64) -> f64 {
     if degrees % 90.0 == 0.0 {
         return [0.0, 1.0, 0.0, -1.0][quarter_index(degrees)];
@@ -282,7 +282,7 @@ pub fn sin_degrees(degrees: f64) -> f64 {
     sin_cycle(degrees / 360.0)
 }
 
-/// The cosine of an angle in degrees, exact on the quarters. Mirrors `PanTilt.cosDegrees`.
+/// The cosine of an angle in degrees, exact on the quarters.
 pub fn cos_degrees(degrees: f64) -> f64 {
     if degrees % 90.0 == 0.0 {
         return [1.0, 0.0, -1.0, 0.0][quarter_index(degrees)];
@@ -291,7 +291,7 @@ pub fn cos_degrees(degrees: f64) -> f64 {
     sin_cycle(degrees / 360.0 + 0.25)
 }
 
-// PanTilt.multiply
+// the product of two matrices
 fn multiply(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
     let mut result = [[0.0; 3]; 3];
 
@@ -305,7 +305,6 @@ fn multiply(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
 }
 
 /// The matrix turning a fixture by the passed degrees around x, y and z, one after the other.
-/// Mirrors `PanTilt.getRotationMatrix`.
 pub fn get_rotation_matrix(rotation: [f64; 3]) -> [[f64; 3]; 3] {
     let sx = sin_degrees(rotation[0]);
     let cx = cos_degrees(rotation[0]);
@@ -323,7 +322,7 @@ pub fn get_rotation_matrix(rotation: [f64; 3]) -> [[f64; 3]; 3] {
 
 /// Where the fixtures of a project hang, by their uuid: a fixture placed by hand where it was
 /// placed, the others spread evenly over the width of the stage in their row, in the order of
-/// the preset fixtures. Mirrors `PanTilt.getStagePlacements`.
+/// the preset fixtures.
 ///
 /// `fixtures` are `project.fixtures` in order, `preset_fixture_uuids` the `fixtureUuid` of each of
 /// `project.presetFixtures` in order (one entry per pixel of a fixture, as they are stored). A
@@ -334,7 +333,7 @@ pub fn stage_placements(
     stage: &StageSize,
 ) -> HashMap<String, StagePlacement> {
     let mut placements: HashMap<String, StagePlacement> = HashMap::new();
-    // of two fixtures with the same uuid, the later one is looked up (Map.put)
+    // of two fixtures with the same uuid, the later one is looked up
     let mut by_uuid: HashMap<&str, &StageFixture> = HashMap::new();
 
     for fixture in fixtures {
@@ -410,7 +409,7 @@ pub fn stage_placements(
 }
 
 /// Where a moving head hanging at the passed place points at the passed spot (in cm), in degrees
-/// from the middle of its ranges. Mirrors `PanTilt.getAimDegrees`.
+/// from the middle of its ranges.
 pub fn get_aim_degrees(placement: &StagePlacement, target: [f64; 3]) -> Aim {
     let matrix = get_rotation_matrix(placement.rotation);
     let mut origin = [0.0; 3];
@@ -441,26 +440,26 @@ pub fn get_aim_degrees(placement: &StagePlacement, target: [f64; 3]) -> Aim {
     let horizontal = (dx * dx + dz * dz).sqrt();
     let tilt = atan2(horizontal, -dy);
     let pan = if horizontal < 1e-9 { 0.0 } else { atan2(-dx, -dz) };
-    let other_pan = if pan > 0.0 { pan - JAVA_PI } else { pan + JAVA_PI };
+    let other_pan = if pan > 0.0 { pan - STD_PI } else { pan + STD_PI };
 
     if other_pan.abs() < pan.abs() {
         return Aim {
-            pan: (other_pan * 180.0) / JAVA_PI,
-            tilt: (-tilt * 180.0) / JAVA_PI,
+            pan: (other_pan * 180.0) / STD_PI,
+            tilt: (-tilt * 180.0) / STD_PI,
         };
     }
 
     Aim {
-        pan: (pan * 180.0) / JAVA_PI,
-        tilt: (tilt * 180.0) / JAVA_PI,
+        pan: (pan * 180.0) / STD_PI,
+        tilt: (tilt * 180.0) / STD_PI,
     }
 }
 
-// ---- the fan over the stage (Fan.java) ----
+// ---- the fan over the stage ----
 
 /// Where each of the parts at the passed places on the stage is in a fan in the passed order
 /// (`front-back`, `bottom-top`, anything else from the left to the right), from 0 to 1, NaN for
-/// all of them if they are all at the same place. Mirrors `Fan.getStageFanPlaces`.
+/// all of them if they are all at the same place.
 pub fn stage_fan_places(positions: &[[f64; 3]], order: &str) -> Vec<f64> {
     let coordinates: Vec<f64> = positions
         .iter()
@@ -475,8 +474,8 @@ pub fn stage_fan_places(positions: &[[f64; 3]], order: &str) -> Vec<f64> {
     let mut max = -f64::MAX;
 
     for &coordinate in &coordinates {
-        min = java_min(min, coordinate);
-        max = java_max(max, coordinate);
+        min = min_or_nan(min, coordinate);
+        max = max_or_nan(max, coordinate);
     }
 
     coordinates
@@ -491,16 +490,16 @@ pub fn stage_fan_places(positions: &[[f64; 3]], order: &str) -> Vec<f64> {
         .collect()
 }
 
-/// Does the preset fan its fixtures by where they are on the stage? Mirrors `Fan.isStageFanOrder`.
+/// Does the preset fan its fixtures by where they are on the stage?
 pub fn is_stage_fan_order(order: &str) -> bool {
     order == "left-right" || order == "front-back" || order == "bottom-top"
 }
 
-// ---- where a pixel is (PixelContext.java) ----
+// ---- where a pixel is ----
 
 /// Where a pixel is in a picture: x and y from 0 to 1 (the middle of the pixel), its column and
-/// row, how many there are, and the aspect of the picture (the longer side being 1). The geometric
-/// fields of `PixelContext`; the default is a fresh `PixelContext`.
+/// row, how many there are, and the aspect of the picture (the longer side being 1). The default
+/// is the one pixel of a picture.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PixelPlace {
     pub x: f64,
@@ -528,10 +527,9 @@ impl Default for PixelPlace {
     }
 }
 
-// ---- where a part is in its fixture (DefaultDesignerService.java) ----
+// ---- where a part is in its fixture ----
 
 /// The number of pixels a matrix has on x and y, as (columns, rows), 0 where it doesn't say.
-/// Mirrors `DefaultDesignerService.getMatrixSize`.
 ///
 /// `pixel_keys` is `matrix.pixelKeys` (layers of rows of keys; `None` if null), which wins over
 /// `pixel_count`, `matrix.pixelCount` (`None` if null, a null entry `None`).
@@ -558,9 +556,10 @@ pub fn matrix_size<S>(pixel_keys: Option<&[Vec<Vec<S>>]>, pixel_count: Option<&[
     (columns, rows)
 }
 
-/// What `getPixelPlace` knows of the pixel of a part: a pixel of its own at its column and row
-/// (`CachedFixturePixel.x/y`, from 1), or a pixel group with the (x, y) of each of its pixels
-/// (what `getPixelsForKeyOrGroup` resolves, in its order).
+/// What [`pixel_place`] knows of the pixel of a part: a pixel of its own at its column and row
+/// (counted from 1), or a pixel group with the (x, y) of each of its pixels (what
+/// [`get_pixels_for_key_or_group`](crate::profile::get_pixels_for_key_or_group) resolves, in its
+/// order).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PixelPosition<'a> {
     Own { x: i32, y: i32 },
@@ -568,8 +567,8 @@ pub enum PixelPosition<'a> {
 }
 
 impl<'a> PixelPosition<'a> {
-    /// Chooses like Java does: a pixel with `x > 0` is at a place of its own, any other is a group
-    /// and takes the passed pixels (which are not looked at otherwise).
+    /// A pixel with `x > 0` is at a place of its own, any other is a group and takes the passed
+    /// pixels (which are not looked at otherwise).
     pub fn of(x: i32, y: i32, group: &'a [(i32, i32)]) -> PixelPosition<'a> {
         if x > 0 {
             PixelPosition::Own { x, y }
@@ -581,8 +580,7 @@ impl<'a> PixelPosition<'a> {
 
 /// Where a part of a fixture is in it: a pixel in its column and row of the matrix, a pixel group
 /// in the middle of its pixels (in the middle of the matrix if it has none), and a part without a
-/// pixel or of a profile without a matrix as the one pixel of the fixture. Mirrors
-/// `DefaultDesignerService.getPixelPlace`.
+/// pixel or of a profile without a matrix as the one pixel of the fixture.
 ///
 /// `matrix_size` is what [`matrix_size`] gives for the matrix of the profile, `None` if the
 /// profile has no matrix. `pixel` is `None` for a part without a pixel.
@@ -633,7 +631,7 @@ pub fn pixel_place(matrix_size: Option<(i32, i32)>, pixel: Option<PixelPosition>
     place
 }
 
-// ---- where the pixels are on the stage (PixelStage.java) ----
+// ---- where the pixels are on the stage ----
 
 /// The room a pixel takes on a fixture which does not say how large it is, in cm.
 pub const DEFAULT_PIXEL_PITCH_CM: f64 = 8.0;
@@ -643,11 +641,11 @@ pub const DEFAULT_PIXEL_DEPTH_CM: f64 = 7.0;
 pub const PIXEL_HOUSING_TOP_CM: f64 = 8.0;
 
 /// The width, height and depth of the housing of a fixture (in cm): as large as its profile says
-/// (in mm), or as large as its pixels need. Mirrors `PixelStage.housingSize`.
+/// (in mm), or as large as its pixels need.
 ///
 /// `dimensions` is `profile.physical.dimensions` (width, height, depth in mm), `None` if the
 /// profile has no physical entry or that has no dimensions. A missing entry, a 0 and a NaN are
-/// the size the pixels need. Java holds a `double[]`, which has no null entries.
+/// the size the pixels need.
 pub fn housing_size(dimensions: Option<&[f64]>, columns: i32, rows: i32) -> [f64; 3] {
     let dimensions = dimensions.unwrap_or(&[]);
 
@@ -658,7 +656,7 @@ pub fn housing_size(dimensions: Option<&[f64]>, columns: i32, rows: i32) -> [f64
     ]
 }
 
-// PixelStage.dimension
+// a dimension of the profile in cm, 0 for one it doesn't give
 fn dimension(dimensions: &[f64], index: usize) -> f64 {
     if index < dimensions.len() {
         dimensions[index] / 10.0
@@ -667,7 +665,7 @@ fn dimension(dimensions: &[f64], index: usize) -> f64 {
     }
 }
 
-// PixelStage.orElse: a size the profile does not give (or gives as 0) is the one the pixels need
+// a size the profile does not give (or gives as 0) is the one the pixels need
 fn or_else(value: f64, otherwise: f64) -> f64 {
     if value == 0.0 || value.is_nan() {
         otherwise
@@ -677,7 +675,7 @@ fn or_else(value: f64, otherwise: f64) -> f64 {
 }
 
 /// Where the housing is below the place its fixture is fastened at (in cm, y up): 0 for a fixture
-/// placed by hand. Mirrors `PixelStage.housingOffset`.
+/// placed by hand.
 pub fn housing_offset(positioning: &str, height: f64) -> f64 {
     if positioning == "manual" {
         0.0
@@ -686,13 +684,13 @@ pub fn housing_offset(positioning: &str, height: f64) -> f64 {
     }
 }
 
-/// Does the fixture stand on the floor (`bottomFront` or `bottomBack`)? Mirrors `PixelStage.isOnTheFloor`.
+/// Does the fixture stand on the floor (`bottomFront` or `bottomBack`)?
 pub fn is_on_the_floor(positioning: &str) -> bool {
     positioning == "bottomFront" || positioning == "bottomBack"
 }
 
 /// Where the LED of a part of a fixture is on the stage, in cm: on the front of the housing of the
-/// passed size, the housing as the fixture hangs. Mirrors `PixelStage.position`.
+/// passed size, the housing as the fixture hangs.
 pub fn pixel_position(place: &PixelPlace, size: [f64; 3], placement: &StagePlacement, positioning: &str) -> [f64; 3] {
     let x = (place.x - 0.5) * size[0];
     let y = (0.5 - place.y) * size[1];
@@ -716,8 +714,7 @@ pub fn pixel_position(place: &PixelPlace, size: [f64; 3], placement: &StagePlace
     position
 }
 
-/// Where a part of a fixture is on the stage, in cm. Mirrors
-/// `DefaultDesignerService.getPartStagePosition`.
+/// Where a part of a fixture is on the stage, in cm.
 ///
 /// `place` is the [`pixel_place`] of the part, whose columns and rows size a housing without
 /// dimensions (see [`housing_size`]); `placement` is the entry of [`stage_placements`] for the
@@ -739,15 +736,14 @@ pub fn part_stage_position(
 }
 
 /// A coordinate rounded to a millimeter, which tells the columns and rows of the picture apart.
-/// Mirrors `PixelStage.millimeters`.
 pub fn millimeters(value: f64) -> i64 {
-    // a Java cast: NaN is 0, beyond the range the nearest whole number
+    // cut off towards zero, saturating: NaN is 0, beyond the range the nearest whole number
     (value * 10.0 + 0.5).floor() as i64
 }
 
 /// The places of the LEDs in the picture they make up together, seen from the front (x to the
 /// right, y up) or from above (`top` as the view, the back of the stage up; anything else is the
-/// front): one place for each position, in the same order. Mirrors `PixelStage.places`.
+/// front): one place for each position, in the same order.
 pub fn pixel_places(positions: &[[f64; 3]], view: &str) -> Vec<PixelPlace> {
     let mut points: Vec<[f64; 2]> = Vec::with_capacity(positions.len());
     let mut column_values: BTreeSet<i64> = BTreeSet::new();
@@ -766,10 +762,10 @@ pub fn pixel_places(positions: &[[f64; 3]], view: &str) -> Vec<PixelPlace> {
         points.push(point);
         column_values.insert(millimeters(point[0]));
         row_values.insert(millimeters(point[1]).wrapping_neg());
-        min_x = java_min(min_x, point[0]);
-        max_x = java_max(max_x, point[0]);
-        min_y = java_min(min_y, point[1]);
-        max_y = java_max(max_y, point[1]);
+        min_x = min_or_nan(min_x, point[0]);
+        max_x = max_or_nan(max_x, point[0]);
+        min_y = min_or_nan(min_y, point[1]);
+        max_y = max_or_nan(max_y, point[1]);
     }
 
     let column_of = indices(&column_values);
@@ -786,7 +782,7 @@ pub fn pixel_places(positions: &[[f64; 3]], view: &str) -> Vec<PixelPlace> {
     } else {
         0.0
     };
-    let longest = java_max(width, height);
+    let longest = max_or_nan(width, height);
 
     points
         .iter()
@@ -811,7 +807,7 @@ pub fn pixel_places(positions: &[[f64; 3]], view: &str) -> Vec<PixelPlace> {
         .collect()
 }
 
-/// The place of each of the values, from the lowest to the highest. Mirrors `PixelStage.indices`.
+/// The place of each of the values, from the lowest to the highest.
 pub fn indices(values: &BTreeSet<i64>) -> HashMap<i64, i32> {
     let mut indices = HashMap::new();
 

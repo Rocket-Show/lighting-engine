@@ -1,25 +1,23 @@
-//! What the Java engine works out of the fixture profiles when a project is loaded, in `f64` and
-//! with the same operations in the same order.
+//! What is worked out of the fixture profiles when a project is compiled, in `f64` and with the
+//! operations in a fixed order, so the results don't depend on the machine.
 //!
-//! A port of the profile helpers of `DefaultDesignerService` (the numbers and the default values
-//! of the fixture library, the colors of the wheels, the pixels of a matrix and the order the
-//! channels are repeated for them in, the brightness of a capability), of
-//! `DefaultFixturePixelGroupResolveService` (the pixels of a group), of the texts
-//! `CapabilityPositions` ranks and of the comments `Maintenance` finds its capabilities by. The
-//! regular expressions of Java are matched by hand (see [`regex_find`] for the ones a profile
-//! brings along itself).
+//! The numbers and the default values of the fixture library, the colors of the wheels, the pixels
+//! of a matrix and the order the channels are repeated for them in, the pixels of a group, where
+//! the properties of the fixture library lie among each other, the comments the capabilities of
+//! maintenance are found by and the brightness of a capability. The regular expressions are
+//! matched by hand (see [`regex_find`] for the ones a profile brings along itself).
 
 use std::cell::Cell;
 use std::cmp::Ordering;
 
 use crate::model::{
-    java_trim, Fixture, FixtureCapability, FixtureChannel, FixtureMatrix, FixtureMatrixPixelGroup,
+    trim_controls_and_spaces, Fixture, FixtureCapability, FixtureChannel, FixtureMatrix, FixtureMatrixPixelGroup,
     FixtureMatrixPixelGroupConstraints, FixtureMode, FixtureModeChannel, FixtureProfile, FixtureWheel,
     FixtureWheelSlot,
 };
 
 // ---------------------------------------------------------------------------------------------
-// Numbers and default values (DefaultDesignerService)
+// Numbers and default values
 // ---------------------------------------------------------------------------------------------
 
 // How long the number a text starts with is, like `[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?` takes
@@ -66,22 +64,22 @@ fn scan_number(text: &str) -> Option<usize> {
 }
 
 /// A number written in a fixture profile (e.g. "12.5", surrounding spaces allowed), or None if the
-/// text is none (`parseNumber`): neither "1d" and "NaN" nor "0x10" are one.
+/// text is none: neither "1d" and "NaN" nor "0x10" are one.
 pub fn parse_number(text: &str) -> Option<f64> {
-    let trimmed = java_trim(text);
+    let trimmed = trim_controls_and_spaces(text);
     if scan_number(trimmed)? != trimmed.len() {
         return None;
     }
     trimmed.parse::<f64>().ok()
 }
 
-/// The highest value of a channel with all of its fine channels (`getMaxValueByChannel`).
+/// The highest value of a channel with all of its fine channels.
 pub fn get_max_value_by_channel(channel: &FixtureChannel) -> f64 {
     256f64.powi(1 + channel.fine_channel_aliases.len() as i32) - 1.0
 }
 
 /// The value a channel starts out with, or None for none: a DMX value or a percentage of the
-/// channel (`getDefaultValueByChannel`). One which can't be read is none.
+/// channel. One which can't be read is none.
 pub fn get_default_value_by_channel(channel: &FixtureChannel) -> Option<f64> {
     let default_value = channel.default_value.as_deref()?;
     if let Some(percentage) = default_value.strip_suffix('%') {
@@ -94,10 +92,10 @@ pub fn get_default_value_by_channel(channel: &FixtureChannel) -> Option<f64> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Colors and wheels (DefaultDesignerService)
+// Colors and wheels
 // ---------------------------------------------------------------------------------------------
 
-/// A color, red, green and blue from 0 to 255 (`Color`).
+/// A color, red, green and blue from 0 to 255.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Color {
     pub red: f64,
@@ -105,8 +103,7 @@ pub struct Color {
     pub blue: f64,
 }
 
-/// A color like "#ff8000", also without the "#" or in short ("#f80"). None for anything else
-/// (`hexToRgb`).
+/// A color like "#ff8000", also without the "#" or in short ("#f80"). None for anything else.
 pub fn hex_to_rgb(hex: &str) -> Option<Color> {
     let digits = hex.strip_prefix('#').unwrap_or(hex);
     if !digits.bytes().all(|byte| byte.is_ascii_hexdigit()) {
@@ -128,8 +125,8 @@ pub fn hex_to_rgb(hex: &str) -> Option<Color> {
     }
 }
 
-/// The passed colors mixed: the mean of each of red, green and blue (`mixColors`). No colors mix
-/// to no number (0 / 0), like in Java.
+/// The passed colors mixed: the mean of each of red, green and blue. No colors mix to no number
+/// (0 / 0).
 pub fn mix_colors(colors: &[Color]) -> Color {
     let mut red = 0.0;
     let mut green = 0.0;
@@ -147,8 +144,7 @@ pub fn mix_colors(colors: &[Color]) -> Color {
     }
 }
 
-/// The passed colors mixed, or None for none. A color which can't be read is left out
-/// (`mixHexColors`).
+/// The passed colors mixed, or None for none. A color which can't be read is left out.
 pub fn mix_hex_colors<S: AsRef<str>>(colors: &[S]) -> Option<Color> {
     let colors: Vec<Color> = colors.iter().filter_map(|color| hex_to_rgb(color.as_ref())).collect();
     if colors.is_empty() {
@@ -159,7 +155,7 @@ pub fn mix_hex_colors<S: AsRef<str>>(colors: &[S]) -> Option<Color> {
 }
 
 /// The slot of a wheel by its number, counted from 1 and around the wheel (9 is the first slot of
-/// a wheel with 8 slots, 0 the last). None for a wheel without slots (`getWheelSlot`).
+/// a wheel with 8 slots, 0 the last). None for a wheel without slots.
 pub fn get_wheel_slot(wheel: &FixtureWheel, slot_number: i32) -> Option<&FixtureWheelSlot> {
     let slot_count = i32::try_from(wheel.slots.len()).ok().filter(|count| *count > 0)?;
     wheel
@@ -167,13 +163,13 @@ pub fn get_wheel_slot(wheel: &FixtureWheel, slot_number: i32) -> Option<&Fixture
         .get(slot_number.wrapping_sub(1).rem_euclid(slot_count) as usize)
 }
 
-/// One slot, or two, if they are split: slot number 2.5 gives the slots 2 and 3 (`getWheelSlots`).
+/// One slot, or two, if they are split: slot number 2.5 gives the slots 2 and 3.
 pub fn get_wheel_slots(wheel: Option<&FixtureWheel>, slot_number: f64) -> Vec<&FixtureWheelSlot> {
     let mut slots = Vec::new();
     let Some(wheel) = wheel.filter(|wheel| !wheel.slots.is_empty()) else {
         return slots;
     };
-    // cut to an int like the cast of Java
+    // cut off towards zero, saturating (NaN is 0)
     slots.extend(get_wheel_slot(wheel, slot_number.floor() as i32));
     if slot_number != slot_number.floor() {
         slots.extend(get_wheel_slot(wheel, slot_number.ceil() as i32));
@@ -181,7 +177,7 @@ pub fn get_wheel_slots(wheel: Option<&FixtureWheel>, slot_number: f64) -> Vec<&F
     slots
 }
 
-/// The colors of the slot (or the two split slots) of a wheel (`getWheelSlotColors`).
+/// The colors of the slot (or the two split slots) of a wheel.
 pub fn get_wheel_slot_colors(wheel: Option<&FixtureWheel>, slot_number: f64) -> Vec<&str> {
     get_wheel_slots(wheel, slot_number)
         .into_iter()
@@ -189,17 +185,17 @@ pub fn get_wheel_slot_colors(wheel: Option<&FixtureWheel>, slot_number: f64) -> 
         .collect()
 }
 
-/// The colors of the slot (or the two split slots) of a wheel, mixed (`getMixedWheelSlotColor`).
+/// The colors of the slot (or the two split slots) of a wheel, mixed.
 pub fn get_mixed_wheel_slot_color(wheel: Option<&FixtureWheel>, slot_number: f64) -> Option<Color> {
     mix_hex_colors(&get_wheel_slot_colors(wheel, slot_number))
 }
 
 // ---------------------------------------------------------------------------------------------
-// The pixels of a matrix (DefaultDesignerService)
+// The pixels of a matrix
 // ---------------------------------------------------------------------------------------------
 
-/// A pixel of a matrix at its position, counted from 1 (`CachedFixturePixel`). A pixel group a
-/// channel is repeated for is one as well, at 0, 0, 0.
+/// A pixel of a matrix at its position, counted from 1. A pixel group a channel is repeated for
+/// is one as well, at 0, 0, 0.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pixel {
     pub key: String,
@@ -220,8 +216,7 @@ impl Pixel {
 }
 
 /// The key the fixture library gives a pixel of a matrix defined by its pixel count: "3" in a row
-/// of pixels, "(2, 3)" on a plane or "(1, 2, 3)" in a cube (`getDefaultPixelKey`). The count has
-/// to name all three axes.
+/// of pixels, "(2, 3)" on a plane or "(1, 2, 3)" in a cube. The count has to name all three axes.
 pub fn get_default_pixel_key(pixel_count: &[i32], x: i32, y: i32, z: i32) -> String {
     let x_defined = pixel_count[0] > 1;
     let y_defined = pixel_count[1] > 1;
@@ -234,7 +229,7 @@ pub fn get_default_pixel_key(pixel_count: &[i32], x: i32, y: i32, z: i32) -> Str
 }
 
 /// All pixels of the matrix of a profile at their positions: layer by layer and row by row, X
-/// changes fastest (`getAllPixelKeys`).
+/// changes fastest.
 pub fn get_all_pixel_keys(profile: &FixtureProfile) -> Vec<Pixel> {
     let mut result = Vec::new();
     let Some(matrix) = &profile.matrix else {
@@ -262,8 +257,8 @@ pub fn get_all_pixel_keys(profile: &FixtureProfile) -> Vec<Pixel> {
     result
 }
 
-/// The pixels in the order of the passed axes, e.g. "YXZ": Y changes fastest, Z slowest
-/// (`getPixelsByAxes`). The axes have to be three letters.
+/// The pixels in the order of the passed axes, e.g. "YXZ": Y changes fastest, Z slowest. The axes
+/// have to be three letters.
 pub fn get_pixels_by_axes(pixels: &[Pixel], axes: &str) -> Vec<Pixel> {
     let axes: Vec<char> = axes.chars().collect();
     let position = |pixel: &Pixel, axis: char| match axis {
@@ -281,7 +276,7 @@ pub fn get_pixels_by_axes(pixels: &[Pixel], axes: &str) -> Vec<Pixel> {
     result
 }
 
-/// The names of the pixel groups of a profile, in their order (`getPixelGroupNames`).
+/// The names of the pixel groups of a profile, in their order.
 pub fn get_pixel_group_names(profile: &FixtureProfile) -> Vec<String> {
     profile
         .matrix
@@ -291,9 +286,9 @@ pub fn get_pixel_group_names(profile: &FixtureProfile) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The pixels a channel of a mode is repeated for, in the order of their channels
-/// (`getPixelsInOrder`). A pixel group counts as one pixel (at 0, 0, 0): its channels control all
-/// of its pixels at once. None for a channel of its own.
+/// The pixels a channel of a mode is repeated for, in the order of their channels. A pixel group
+/// counts as one pixel (at 0, 0, 0): its channels control all of its pixels at once. None for a
+/// channel of its own.
 pub fn get_pixels_in_order(profile: &FixtureProfile, repeat_for: &[String]) -> Vec<Pixel> {
     let mut result = Vec::new();
     if repeat_for.is_empty() || profile.matrix.is_none() {
@@ -327,8 +322,7 @@ pub fn get_pixels_in_order(profile: &FixtureProfile, repeat_for: &[String]) -> V
     result
 }
 
-/// The number of pixels a matrix has on X and Y: the columns and the rows, 0 where it doesn't say
-/// (`getMatrixSize`).
+/// The number of pixels a matrix has on X and Y: the columns and the rows, 0 where it doesn't say.
 pub fn get_matrix_size(matrix: &FixtureMatrix) -> (i32, i32) {
     if let Some(pixel_keys) = &matrix.pixel_keys {
         let mut rows = 0;
@@ -352,7 +346,7 @@ pub fn get_matrix_size(matrix: &FixtureMatrix) -> (i32, i32) {
 }
 
 /// The mode of the profile a fixture uses: by the short name of the mode, or by its name if it
-/// has no short one (`getModeByFixture`).
+/// has no short one.
 pub fn get_mode_by_fixture<'a>(profile: &'a FixtureProfile, fixture: &Fixture) -> Option<&'a FixtureMode> {
     let wanted = fixture.mode_short_name.as_deref()?;
     profile
@@ -365,8 +359,7 @@ pub fn get_mode_by_fixture<'a>(profile: &'a FixtureProfile, fixture: &Fixture) -
         })
 }
 
-/// The name of a template channel for a pixel: "Red $pixelKey" is "Red 3" for the pixel "3"
-/// (`getChannelNameWithPixelKey`).
+/// The name of a template channel for a pixel: "Red $pixelKey" is "Red 3" for the pixel "3".
 pub fn get_channel_name_with_pixel_key(template_channel_name: &str, pixel_key: Option<&str>) -> String {
     match pixel_key {
         Some(pixel_key) if !pixel_key.is_empty() => template_channel_name.replace("$pixelKey", pixel_key),
@@ -375,7 +368,7 @@ pub fn get_channel_name_with_pixel_key(template_channel_name: &str, pixel_key: O
 }
 
 /// The pixels the channels of a mode are repeated for, each once, in the order the mode comes to
-/// them in (`fixtureGetUniquePixels` for a mode).
+/// them in.
 pub fn mode_get_unique_pixels(profile: &FixtureProfile, mode: &FixtureMode) -> Vec<Pixel> {
     let mut pixels: Vec<Pixel> = Vec::new();
     for channel in &mode.channels {
@@ -388,23 +381,21 @@ pub fn mode_get_unique_pixels(profile: &FixtureProfile, mode: &FixtureMode) -> V
     pixels
 }
 
-/// All pixels used by the channels of the mode of a fixture (`fixtureGetUniquePixels`). None for
-/// a fixture without a mode in the profile, where Java fails.
+/// All pixels used by the channels of the mode of a fixture. None for a fixture without a mode in
+/// the profile.
 pub fn fixture_get_unique_pixels(profile: &FixtureProfile, fixture: &Fixture) -> Option<Vec<Pixel>> {
     Some(mode_get_unique_pixels(profile, get_mode_by_fixture(profile, fixture)?))
 }
 
-/// Does the mode have a channel which is not repeated for pixels (`fixtureHasGeneralChannel` for
-/// a mode)?
+/// Does the mode have a channel which is not repeated for pixels?
 pub fn mode_has_general_channel(profile: &FixtureProfile, mode: &FixtureMode) -> bool {
     mode.channels
         .iter()
         .any(|channel| get_pixels_in_order(profile, &channel.repeat_for).is_empty())
 }
 
-/// Does the fixture have a channel without a reference to pixels in its mode
-/// (`fixtureHasGeneralChannel`)? None for a fixture without a mode in the profile, where Java
-/// fails.
+/// Does the fixture have a channel without a reference to pixels in its mode? None for a fixture
+/// without a mode in the profile.
 pub fn fixture_has_general_channel(profile: &FixtureProfile, fixture: &Fixture) -> Option<bool> {
     Some(mode_has_general_channel(
         profile,
@@ -412,17 +403,18 @@ pub fn fixture_has_general_channel(profile: &FixtureProfile, fixture: &Fixture) 
     ))
 }
 
-/// A channel of a mode nobody uses: without a name and not repeated for pixels (`isUnusedChannel`).
+/// A channel of a mode nobody uses: without a name and not repeated for pixels.
 pub fn is_unused_channel(channel: &FixtureModeChannel) -> bool {
     channel.name.is_empty() && channel.repeat_for.is_empty()
 }
 
 // ---------------------------------------------------------------------------------------------
-// The pixels of a group (DefaultFixturePixelGroupResolveService)
+// The pixels of a group
 // ---------------------------------------------------------------------------------------------
 
-// Character.toLowerCase of a char of Java
-fn java_lower_case(unit: u16) -> u16 {
+// A UTF-16 unit in lower case, where that is one unit as well: half a pair and a character
+// whose lower case takes more than one unit stay as they are, but U+0130 (an I with a dot) is "i".
+fn lower_case_unit(unit: u16) -> u16 {
     let Some(character) = char::from_u32(unit as u32) else {
         // half a pair
         return unit;
@@ -451,7 +443,7 @@ fn compare_digits(digits1: &[u16], digits2: &[u16]) -> Ordering {
 }
 
 /// Pixel keys like the fixture library sorts them: numbers by their value (2 before 10), the rest
-/// alphabetically, whatever its case (`compareKeys`).
+/// alphabetically, whatever its case.
 pub fn compare_keys(key1: &str, key2: &str) -> Ordering {
     let key1: Vec<u16> = key1.encode_utf16().collect();
     let key2: Vec<u16> = key2.encode_utf16().collect();
@@ -476,7 +468,7 @@ pub fn compare_keys(key1: &str, key2: &str) -> Ordering {
                 return result;
             }
         } else {
-            let result = java_lower_case(unit1).cmp(&java_lower_case(unit2));
+            let result = lower_case_unit(unit1).cmp(&lower_case_unit(unit2));
             if result != Ordering::Equal {
                 return result;
             }
@@ -493,8 +485,9 @@ fn sorted_by_key(pixels: &[Pixel]) -> Vec<Pixel> {
     result
 }
 
-// `\s` of a regular expression of Java
-fn is_java_space(character: char) -> bool {
+// `\s` of a regular expression: the space, the tab, the line feed, the vertical tab, the form
+// feed and the carriage return
+fn is_regex_space(character: char) -> bool {
     matches!(character, ' ' | '\t' | '\n' | '\u{b}' | '\u{c}' | '\r')
 }
 
@@ -502,7 +495,7 @@ fn all_digits(text: &str) -> bool {
     !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit())
 }
 
-// Integer.parseInt of digits (with a "-" before them or not)
+// the i32 of digits (with a "-" before them or not), an error if they don't fit
 fn parse_int(digits: &str, rule: &str) -> Result<i32, String> {
     digits
         .parse::<i32>()
@@ -510,16 +503,16 @@ fn parse_int(digits: &str, rule: &str) -> Result<i32, String> {
 }
 
 /// Whether a position meets a rule of a pixel group: "<=5", ">=5", "=5", "even", "odd", "3n",
-/// "3n+1" or a plain number (`matchNumberRule`). A rule which can't be read is an error.
+/// "3n+1" or a plain number. A rule which can't be read is an error.
 pub fn match_number_rule(value: i32, rule_raw: &str) -> Result<bool, String> {
-    let rule = java_trim(rule_raw).to_lowercase();
+    let rule = trim_controls_and_spaces(rule_raw).to_lowercase();
 
     // comparisons: <=5, >=5, =5
     for operator in ["<=", ">=", "="] {
         let Some(rest) = rule.strip_prefix(operator) else {
             continue;
         };
-        let number = rest.trim_start_matches(is_java_space);
+        let number = rest.trim_start_matches(is_regex_space);
         if !all_digits(number.strip_prefix('-').unwrap_or(number)) {
             continue;
         }
@@ -552,7 +545,7 @@ pub fn match_number_rule(value: i32, rule_raw: &str) -> Result<bool, String> {
             if base == 0 {
                 return Err(format!("The numeric rule \"{rule_raw}\" divides by zero"));
             }
-            // like the ints of Java, which wrap around
+            // in i32, wrapping around
             let modulo = (value % base).wrapping_add(base) % base;
             let target = (remainder % base).wrapping_add(base) % base;
             return Ok(modulo == target);
@@ -567,8 +560,8 @@ pub fn match_number_rule(value: i32, rule_raw: &str) -> Result<bool, String> {
     Err(format!("Unknown numeric rule: \"{rule_raw}\""))
 }
 
-// Whether a pixel meets all constraints. Like in Java, a rule is only read once a pixel gets to
-// it: the first rule a pixel doesn't meet ends it.
+// Whether a pixel meets all constraints. A rule is only read once a pixel gets to it: the first
+// rule a pixel doesn't meet ends it.
 fn matches_all_constraints(pixel: &Pixel, constraints: &FixtureMatrixPixelGroupConstraints) -> Result<bool, String> {
     for (position, rules) in [
         (pixel.x, &constraints.x),
@@ -592,7 +585,7 @@ fn matches_all_constraints(pixel: &Pixel, constraints: &FixtureMatrixPixelGroupC
 
 /// The pixels of a group in the order of the fixture library: the listed keys as listed, all
 /// pixels and pixels constrained by their name alphanumerically, the others by their position, as
-/// the passed pixels come (`resolveGroupPixels`). A rule which can't be read is an error.
+/// the passed pixels come. A rule which can't be read is an error.
 pub fn resolve_group_pixels(
     group: Option<&FixtureMatrixPixelGroup>,
     all_pixels: &[Pixel],
@@ -633,8 +626,8 @@ pub fn resolve_group_pixels(
     Ok(result)
 }
 
-/// The pixel of the passed key, or else the pixels of the group of the passed name
-/// (`getPixelsForKeyOrGroup`).
+/// The pixel of the passed key, or else the pixels of the group of the passed name: a pixel key
+/// is preferred over a group of the same name.
 pub fn get_pixels_for_key_or_group(
     matrix: Option<&FixtureMatrix>,
     all_pixels: &[Pixel],
@@ -659,7 +652,7 @@ pub fn get_pixels_for_key_or_group(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Regular expressions of Java
+// Regular expressions
 // ---------------------------------------------------------------------------------------------
 
 // where `.` stops and `$` looks ahead to
@@ -667,7 +660,7 @@ fn is_line_terminator(character: char) -> bool {
     matches!(character, '\n' | '\r' | '\u{85}' | '\u{2028}' | '\u{2029}')
 }
 
-// `$` of Java: at the end, or before a line terminator which ends the text
+// `$`: at the end, or before a line terminator which ends the text
 fn is_dollar(text: &[char], index: usize) -> bool {
     let end = text.len();
     if index + 2 < end {
@@ -686,7 +679,7 @@ fn is_dollar(text: &[char], index: usize) -> bool {
     true
 }
 
-// a character of a word of `\b` (of a JDK from 19 on: the ones of `\w`)
+// a character of a word of `\b`: the ones of `\w`
 fn is_word_character(character: char) -> bool {
     character.is_ascii_alphanumeric() || character == '_'
 }
@@ -715,7 +708,7 @@ fn has_base_character(text: &[char], mut index: usize) -> bool {
     false
 }
 
-// `\b` of Java
+// `\b`: between a character of a word and one which is none
 fn is_word_boundary(text: &[char], index: usize) -> bool {
     let in_word =
         |at: usize| is_word_character(text[at]) || (is_combining_mark(text[at]) && has_base_character(text, at));
@@ -765,7 +758,7 @@ impl ClassItem {
             ClassItem::Range(first, last) => (*first..=*last).contains(&character),
             ClassItem::Digit(negated) => character.is_ascii_digit() != *negated,
             ClassItem::Word(negated) => is_word_character(character) != *negated,
-            ClassItem::Space(negated) => is_java_space(character) != *negated,
+            ClassItem::Space(negated) => is_regex_space(character) != *negated,
         }
     }
 }
@@ -1218,14 +1211,14 @@ impl RegexMatcher<'_> {
     }
 }
 
-/// Whether a regular expression of Java is found in a text (`Pattern.compile(pattern)
-/// .matcher(text).find()`), for the names a pixel group constrains its pixels by.
+/// Whether a regular expression is found anywhere in a text, for the names a pixel group
+/// constrains its pixels by.
 ///
 /// It knows what such names are written with: characters, `.`, classes (`[a-z]`, `[^0-9]`, `\d`,
 /// `\w`, `\s` and their opposites), `^`, `$`, `\b`, `\B`, `\A`, `\z`, `\Z`, groups, `|` and the
-/// repetitions `?`, `*`, `+`, `{n}`, `{n,}`, `{n,m}`, greedy or lazy. An expression Java can't read
-/// is an error, and so is one written with anything else Java knows (looking around, references
-/// to groups, flags, possessive repetitions, classes in classes, `\p{…}`).
+/// repetitions `?`, `*`, `+`, `{n}`, `{n,}`, `{n,m}`, greedy or lazy. An expression which can't be
+/// read is an error, and so is one written with anything else (looking around, references to
+/// groups, flags, possessive repetitions, classes in classes, `\p{…}`).
 pub fn regex_find(pattern: &str, text: &str) -> Result<bool, String> {
     let mut parser = RegexParser {
         pattern,
@@ -1252,7 +1245,7 @@ pub fn regex_find(pattern: &str, text: &str) -> Result<bool, String> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Where the properties of the fixture library lie (CapabilityPositions)
+// Where the properties of the fixture library lie
 // ---------------------------------------------------------------------------------------------
 
 // where the words of the fixture library lie among the numbers it gives the same property in
@@ -1287,9 +1280,9 @@ fn word_rank(word: &str) -> Option<f64> {
 }
 
 /// Where a property of the fixture library lies (e.g. "10deg", "wide", "120bpm", which is 2 Hz,
-/// or "500ms", which is half a second), or None for one which can't be read (`getPropertyRank`).
+/// or "500ms", which is half a second), or None for one which can't be read.
 pub fn get_property_rank(text: Option<&str>) -> Option<f64> {
-    let trimmed = java_trim(text?);
+    let trimmed = trim_controls_and_spaces(text?);
     if let Some(rank) = word_rank(trimmed) {
         return Some(rank);
     }
@@ -1303,18 +1296,18 @@ pub fn get_property_rank(text: Option<&str>) -> Option<f64> {
     }
 }
 
-/// Is a property of the fixture library nothing at all, e.g. no fog ("off" or 0) (`isNothing`)?
+/// Is a property of the fixture library nothing at all, e.g. no fog ("off" or 0)?
 pub fn is_nothing(text: Option<&str>) -> bool {
     let Some(text) = text else {
         return false;
     };
-    java_trim(text) == "off" || get_property_rank(Some(text)) == Some(0.0)
+    trim_controls_and_spaces(text) == "off" || get_property_rank(Some(text)) == Some(0.0)
 }
 
 /// Where a speed of a rotation lies (e.g. "fast CW", "stop", "-10rpm" or "50%"), clockwise above
-/// 0, or None for one which can't be read (`getRotationRank`).
+/// 0, or None for one which can't be read.
 pub fn get_rotation_rank(text: Option<&str>) -> Option<f64> {
-    let trimmed = java_trim(text?);
+    let trimmed = trim_controls_and_spaces(text?);
     match trimmed {
         "fast CW" => Some(1e9),
         "slow CW" => Some(1e-9),
@@ -1326,10 +1319,10 @@ pub fn get_rotation_rank(text: Option<&str>) -> Option<f64> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The capabilities a fixture is reset and its lamp is switched with (Maintenance)
+// The capabilities a fixture is reset and its lamp is switched with
 // ---------------------------------------------------------------------------------------------
 
-/// What a fixture is asked to do through a maintenance capability (`Maintenance.Action`).
+/// What a fixture is asked to do through a maintenance capability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MaintenanceAction {
     Reset,
@@ -1364,10 +1357,10 @@ pub enum MaintenanceMatch {
     Exactly,
 }
 
-/// The comment of a capability like `Maintenance` reads it: without the spaces around it and in
-/// lower case, empty for none.
+/// The comment of a capability as it is matched: without the spaces around it and in lower case,
+/// empty for none.
 pub fn maintenance_comment(comment: Option<&str>) -> String {
-    java_trim(comment.unwrap_or("")).to_lowercase()
+    trim_controls_and_spaces(comment.unwrap_or("")).to_lowercase()
 }
 
 // does the text start with the word, and end after it like `$` wants it?
@@ -1376,8 +1369,8 @@ fn ends_with_only(text: &str, word: &str) -> bool {
         .is_some_and(|rest| is_dollar(&rest.chars().collect::<Vec<char>>(), 0))
 }
 
-/// Does the comment of a capability say that it does nothing but the action (`EXACTLY`:
-/// `^(fixture |total |full )?reset( all)?$`, `^lamp on$`, `^lamp off$`)?
+/// Does the comment of a capability say that it does nothing but the action
+/// (`^(fixture |total |full )?reset( all)?$`, `^lamp on$`, `^lamp off$`)?
 pub fn maintenance_matches_exactly(action: MaintenanceAction, comment: Option<&str>) -> bool {
     let comment = maintenance_comment(comment);
     match action {
@@ -1404,7 +1397,7 @@ fn word_at(text: &[char], index: usize, word: &str) -> Option<usize> {
 }
 
 /// Does the comment of a capability say that it does the action, maybe among other things
-/// (`AMONG`: `\breset\b`, `\blamp\s*on\b`, `\blamp\s*off\b`)?
+/// (`\breset\b`, `\blamp\s*on\b`, `\blamp\s*off\b`)?
 pub fn maintenance_matches_among(action: MaintenanceAction, comment: Option<&str>) -> bool {
     let text: Vec<char> = maintenance_comment(comment).chars().collect();
     (0..text.len()).any(|start| {
@@ -1415,7 +1408,7 @@ pub fn maintenance_matches_among(action: MaintenanceAction, comment: Option<&str
             MaintenanceAction::Reset => word_at(&text, start, "reset"),
             MaintenanceAction::LampOn | MaintenanceAction::LampOff => {
                 word_at(&text, start, "lamp").and_then(|mut index| {
-                    while text.get(index).is_some_and(|character| is_java_space(*character)) {
+                    while text.get(index).is_some_and(|character| is_regex_space(*character)) {
                         index += 1;
                     }
                     word_at(
@@ -1434,8 +1427,9 @@ pub fn maintenance_matches_among(action: MaintenanceAction, comment: Option<&str
     })
 }
 
-/// How the comment of a maintenance capability names the action. `Maintenance.getCapability` takes
-/// the first capability naming it exactly, or else the first one naming it among other things.
+/// How the comment of a maintenance capability names the action. Of the capabilities of a
+/// fixture, the first one naming it exactly is taken, or else the first one naming it among other
+/// things.
 pub fn maintenance_match(action: MaintenanceAction, comment: Option<&str>) -> MaintenanceMatch {
     if maintenance_matches_exactly(action, comment) {
         MaintenanceMatch::Exactly
@@ -1447,18 +1441,17 @@ pub fn maintenance_match(action: MaintenanceAction, comment: Option<&str>) -> Ma
 }
 
 // ---------------------------------------------------------------------------------------------
-// How bright a capability lights (DefaultDesignerService)
+// How bright a capability lights
 // ---------------------------------------------------------------------------------------------
 
-/// The number of a brightness before its unit, e.g. of "50%" (`parseBrightnessNumber`). None as
-/// well for a brightness which doesn't end with the unit (Java is never asked for one).
+/// The number of a brightness before its unit, e.g. of "50%". None as well for a brightness which
+/// doesn't end with the unit.
 pub fn parse_brightness_number(brightness: &str, unit: &str) -> Option<f64> {
     parse_number(brightness.strip_suffix(unit)?)
 }
 
 /// How bright a capability lights, from 0 to 1, like the fixture library gives it: "off", "dark",
-/// "bright", in percent or in lumens, compared to the brightest capability of the channel
-/// (`getBrightness`).
+/// "bright", in percent or in lumens, compared to the brightest capability of the channel.
 pub fn get_brightness(brightness: Option<&str>, max_lumens: f64) -> Option<f64> {
     let brightness = brightness?;
     match brightness {
@@ -1477,7 +1470,7 @@ pub fn get_brightness(brightness: Option<&str>, max_lumens: f64) -> Option<f64> 
     }
 }
 
-/// The most lumens any of the capabilities of a channel gives (`getMaxLumens`), 0 for none.
+/// The most lumens any of the capabilities of a channel gives, 0 for none.
 pub fn get_max_lumens<'a>(capabilities: impl IntoIterator<Item = &'a FixtureCapability>) -> f64 {
     let mut max_lumens: f64 = 0.0;
     for capability in capabilities {
@@ -1500,7 +1493,7 @@ pub fn get_max_lumens<'a>(capabilities: impl IntoIterator<Item = &'a FixtureCapa
 }
 
 /// The brightness at the start and at the end of a capability: from off (0) to bright (1), if not
-/// given (`getBrightnessRange`).
+/// given.
 pub fn get_brightness_range(capability: &FixtureCapability, max_lumens: f64) -> [f64; 2] {
     let (start, end) = match capability.brightness.as_deref() {
         Some(brightness) => {

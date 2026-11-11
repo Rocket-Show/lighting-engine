@@ -41,7 +41,7 @@ pub mod fixture_flag {
 
 /// How a timeline is played.
 pub mod timeline_flag {
-    /// played as the show (every track), not previewed by the designer (which leaves hidden tracks out)
+    /// played as the show (every track), not as a preview (which leaves hidden tracks out)
     pub const PLAYER: u32 = 1;
     /// the composition played in between, which follows a tempo from outside
     pub const DEFAULT_COMPOSITION: u32 = 2;
@@ -53,7 +53,7 @@ enum Mode {
     Idle,
     /// the timeline of a composition
     Timeline,
-    /// the preset or the scenes selected in the designer
+    /// the preset or the scenes selected for a preview
     Preview,
     /// the scenes picked by hand
     Live,
@@ -274,7 +274,7 @@ struct Frame {
     /// the position played
     time: Ns,
     layers: usize,
-    /// the tempo of the composition playing (or open in the designer), none without one
+    /// the tempo of the composition playing (or selected in the project), none without one
     programmed_bpm: Option<Fix>,
     /// the tempo of the beat clock
     clock_bpm: Fix,
@@ -463,7 +463,7 @@ impl<'a> Engine<'a> {
         }
     }
 
-    /// Preview what is selected in the designer: the selected preset alone (solo, or while no scene is selected), or
+    /// Preview what is selected: the selected preset alone (solo, or while no scene is selected), or
     /// else the selected scenes.
     pub fn play_preview(&mut self, solo: bool) {
         self.rt.mode = Mode::Preview;
@@ -482,7 +482,7 @@ impl<'a> Engine<'a> {
         self.rt.mode = Mode::Idle;
     }
 
-    /// The preset selected in the designer and the step being edited in it (-1: none).
+    /// The preset selected for the preview and the step being edited in it (-1: none).
     pub fn select_preset(&mut self, preset: i32, step: i32) {
         self.rt.preset = preset;
         self.rt.step = step;
@@ -627,7 +627,7 @@ impl<'a> Engine<'a> {
         self.show.get(self.show.root.compositions, index as usize)
     }
 
-    /// the tempo of the composition playing, or else of the one open in the designer
+    /// the tempo of the composition playing, or else of the one selected in the project
     fn programmed_bpm(&self) -> Option<Fix> {
         self.tempo_composition().map(|composition| composition.bpm)
     }
@@ -915,7 +915,7 @@ impl<'a> Engine<'a> {
                     layer.sel = state_at(&self.show, &preset, layer.steps_base);
                 }
             } else {
-                // the step the designer is editing, or else the first one
+                // the step being edited, or else the first one
                 let mut step = 0;
 
                 if self.rt.step >= 0

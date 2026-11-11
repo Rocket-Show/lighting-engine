@@ -1,10 +1,9 @@
-//! What a pixel effect sets for its pattern (`PixelPatternSettings`, `EffectPixel`), and where a pixel is
-//! (`PixelContext`).
+//! What a pixel effect sets for its pattern ([`PatternSettings`]), and where a pixel is ([`PixelContext`]).
 //!
 //! The project writes the choices as strings. Here each is a `u8` enum: `from_u8` reads the byte of the compiled show
-//! (a value it does not know behaves like a name Rocket Show does not know), `as_u8` writes it. With the `std` feature,
-//! `from_name` reads the string of the project the way Rocket Show does: a value missing, null or empty is the default
-//! of the effect, an unknown one takes the default branch of the pattern.
+//! (a value it does not know behaves like a name which is not known), `as_u8` writes it. With the `std` feature,
+//! `from_name` reads the string of the project: a value missing, null or empty is the default of the effect, an
+//! unknown one takes the default branch of the pattern.
 
 use crate::bitmap::Bitmap;
 
@@ -34,7 +33,7 @@ macro_rules! names {
                 self as u8
             }
 
-            /// The value of a string of the project, read like Rocket Show reads it: missing, null or empty is the
+            /// The value of a string of the project, read like a project is read: missing, null or empty is the
             /// default of the effect, an unknown name what the pattern does with one.
             #[cfg(feature = "std")]
             pub fn from_name(name: Option<&str>) -> Self {
@@ -56,8 +55,8 @@ macro_rules! names {
     };
 }
 
-/// The pattern of a pixel effect (`pattern` of the effect, `"chase"` by default). A name which is not known (a
-/// pattern of a newer designer) lights nothing.
+/// The pattern of a pixel effect (`pattern` of the effect, `"chase"` by default). A name this engine doesn't know
+/// lights nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Pattern {
@@ -84,7 +83,7 @@ pub enum Pattern {
     Scope = 20,
     Text = 21,
     Image = 22,
-    /// A pattern of a newer designer: nothing is lit.
+    /// A pattern this engine doesn't know: nothing is lit.
     Unknown = 255,
 }
 
@@ -124,8 +123,8 @@ impl Pattern {
         self as u8
     }
 
-    /// The pattern of a string of the project, read like `EffectPixel.setPattern` and `PixelPatterns.sample` do:
-    /// missing, null or empty is the chase, an unknown name [`Pattern::Unknown`].
+    /// The pattern of a string of the project: missing, null or empty is the chase, an unknown name
+    /// [`Pattern::Unknown`].
     #[cfg(feature = "std")]
     pub fn from_name(name: Option<&str>) -> Self {
         match name {
@@ -187,8 +186,8 @@ impl Pattern {
         })
     }
 
-    /// Whether the pattern shows the audio itself (`EffectPixel.showsAudio`): the level meter and the wave of the
-    /// audio. Any other pattern follows the audio with its brightness or its size, which the caller does.
+    /// Whether the pattern shows the audio itself: the level meter and the wave of the audio. Any other pattern
+    /// follows the audio with its brightness or its size, which the caller does.
     pub const fn shows_audio(self) -> bool {
         matches!(self, Self::Meter | Self::Scope)
     }
@@ -303,8 +302,8 @@ names! {
     /// `blend` of an effect, what it does with the color the preset puts on a pixel: `replace` it, `mask` it (the
     /// pattern only sets how bright it is), `add` to it or take the `max` of both. `"replace"` by default.
     ///
-    /// An unknown name is [`Blend::Other`]: Rocket Show mixes it like `replace`, but lets the effect follow the
-    /// presets like every blend which is not `replace` (see [`Blend::follows_presets`]).
+    /// An unknown name is [`Blend::Other`]: it mixes like `replace`, but lets the effect follow the presets like
+    /// every blend which is not `replace` (see [`Blend::follows_presets`]).
     Blend, missing Replace, unknown Other, {
         Replace = 0 => "replace",
         Mask = 1 => "mask",
@@ -315,14 +314,14 @@ names! {
 }
 
 impl Blend {
-    /// Whether the blend alone makes the effect follow the color the presets give a pixel (`pixelFollowsPresets`:
-    /// anything but `replace`; an effect with the palette of the preset follows them as well).
+    /// Whether the blend alone makes the effect follow the color the presets give a pixel (anything but `replace`;
+    /// an effect with the palette of the preset follows them as well).
     pub const fn follows_presets(self) -> bool {
         !matches!(self, Self::Replace)
     }
 
-    /// A color of a pixel the effect lights, blended with the one the preset puts on it (`mixPixelValue`): `base` the
-    /// color of the preset, `lit` the light of the pattern and `level` how bright the pattern is, all between 0 and 1.
+    /// A color of a pixel the effect lights, blended with the one the preset puts on it: `base` the color of the
+    /// preset, `lit` the light of the pattern and `level` how bright the pattern is, all between 0 and 1.
     pub fn mix(self, base: f32, lit: f32, level: f32) -> f32 {
         match self {
             Self::Mask => base * level,
@@ -396,7 +395,7 @@ pub struct PixelContext {
 }
 
 impl PixelContext {
-    /// A single pixel in the middle of a picture of one (the defaults of `PixelContext`).
+    /// A single pixel in the middle of a picture of one.
     pub const DEFAULT: PixelContext = PixelContext {
         x: 0.5,
         y: 0.5,
@@ -453,7 +452,7 @@ pub struct PatternSettings<'a> {
 }
 
 impl PatternSettings<'_> {
-    /// The defaults of `EffectPixel`: a chase of a quarter of the pixels to the right.
+    /// The defaults of a pixel effect: a chase of a quarter of the pixels to the right.
     pub const DEFAULT: PatternSettings<'static> = PatternSettings {
         pattern: Pattern::Chase,
         size: 0.25,
@@ -482,7 +481,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_the_names_like_rocket_show() {
+    fn reads_the_names_of_a_project() {
         assert_eq!(Pattern::from_name(None), Pattern::Chase);
         assert_eq!(Pattern::from_name(Some("")), Pattern::Chase);
         assert_eq!(Pattern::from_name(Some("scope")), Pattern::Scope);
@@ -577,7 +576,7 @@ mod tests {
     }
 
     #[test]
-    fn blends_like_rocket_show() {
+    fn blends_with_the_color_of_the_preset() {
         assert_eq!(Blend::Replace.mix(0.5, 0.25, 0.5), 0.25);
         assert_eq!(Blend::Other.mix(0.5, 0.25, 0.5), 0.25);
         assert_eq!(Blend::Mask.mix(0.5, 0.25, 0.5), 0.25);

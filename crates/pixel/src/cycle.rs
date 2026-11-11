@@ -1,9 +1,9 @@
 //! A number of periods of an effect which keeps its whole part exact.
 //!
-//! Rocket Show passes the moment of a pattern as a `double` of periods run so far. After hours that is a huge number,
-//! and a single precision float of it has no part of a period left. A [`Cycle`] keeps the whole periods as an integer
-//! and the part of the running one as a float between 0 and 1. Every operation the patterns need (times a factor, plus
-//! an offset, the other way round) works on the integer exactly and only rounds the part.
+//! The moment of a pattern is the number of periods run so far. After hours that is a huge number, and a single
+//! precision float of it has no part of a period left. A [`Cycle`] keeps the whole periods as an integer and the part
+//! of the running one as a float between 0 and 1. Every operation the patterns need (times a factor, plus an offset,
+//! the other way round) works on the integer exactly and only rounds the part.
 
 /// A number of periods: `whole + frac`, with `0 <= frac < 1`.
 ///
@@ -67,7 +67,7 @@ impl Cycle {
         Cycle::new(floor as i64, value - floor)
     }
 
-    /// The periods of a `double`, the part rounded to single precision. For tests and for the compiler.
+    /// The periods of an `f64`, the part rounded to single precision. For tests and for the compiler.
     #[cfg(any(test, feature = "std"))]
     pub fn from_f64(value: f64) -> Cycle {
         if !value.is_finite() {
@@ -79,17 +79,17 @@ impl Cycle {
         Cycle::new(floor as i64, (value - floor) as f32)
     }
 
-    /// The part of the running period, between 0 and 1 (`PixelMath.fract(cycle)`).
+    /// The part of the running period, between 0 and 1.
     pub fn fract(self) -> f32 {
         Cycle::new(self.whole, self.frac).frac
     }
 
-    /// The whole periods (`Math.floor(cycle)`).
+    /// The whole periods.
     pub fn floor(self) -> i64 {
         Cycle::new(self.whole, self.frac).whole
     }
 
-    /// The whole periods as a 32 bit integer, wrapped around like `PixelMath.toInt(Math.floor(cycle))`.
+    /// The whole periods as a 32 bit integer, wrapped around.
     pub fn floor_i32(self) -> i32 {
         self.floor() as i32
     }
@@ -289,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn floors_and_wraps_like_java() {
+    fn floors_and_wraps_around_at_32_bits() {
         assert_eq!(Cycle::from_f64(-0.5).floor(), -1);
         assert_eq!(Cycle::from_f64(4294967301.5).floor_i32(), 5);
         assert_eq!(Cycle::from_f64(2147483648.0).floor_i32(), i32::MIN);

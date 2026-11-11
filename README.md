@@ -1,24 +1,28 @@
 # Lighting engine
 
-The lighting engine of Rocket Show, written once in Rust for its three clients:
+A lighting engine written once, in Rust, for three kinds of hosts:
 
-- **Rocket Show** (Java, on SPARK and the Raspberry Pi), which loads it as WebAssembly inside the JVM,
-- the **online designer** (TypeScript, in the browser), which loads the same WebAssembly file,
-- **Ember** (the DMX stick, on an RP2350), whose firmware links it as a crate.
+- a **firmware on a microcontroller**, which links its core as a crate,
+- an **app in a browser**, which loads it as a WebAssembly file,
+- an **app in a JVM**, which loads the same WebAssembly file.
+
+It turns a project (the JSON a show is edited in: fixtures with their profiles in the format of the Open Fixture
+Library, presets with steps and effects, scenes, and compositions with a timeline) and a moment into the value of every
+channel of every fixture.
 
 [concept.md](concept.md) says what is built and why. [docs/format.md](docs/format.md) specifies the compiled show a
 project is turned into. This file says what is there and how to use it.
 
 ## What is there
 
-The engine of phases 1 and 2 of the concept: everything the Java engine of Rocket Show (`lighting/designer`) and the
-preview of the designer play, ported from the Java engine and compared with the conformance cases both of them pass.
+The engine of phases 1 and 2 of the concept. It replaces engines written for one host each and kept equal by hand, and
+is compared with the conformance cases recorded from them.
 
 | Crate             | What it is                                                                                                                                                                                                                          |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `crates/core`     | The core: a compiled show, the inputs of the host with their times and a moment in, the value of every channel of every fixture and the DMX universes out. No standard library, no heap, single-precision floats, whole-number time |
 | `crates/pixel`    | The maths of the pixel patterns, a part of the core in a crate of its own (the same rules)                                                                                                                                          |
-| `crates/compiler` | The compiler: the project JSON of the designer in, a compiled show and the table from uuids to numbers out. Works everything fixed out once, in double precision                                                                    |
+| `crates/compiler` | The compiler: the JSON of a project (`crates/compiler/src/model.rs` is what it reads of one) in, a compiled show and the table from uuids to numbers out. Works everything fixed out once, in double precision                      |
 | `crates/wasm`     | `engine.wasm`: the core and the compiler behind a boundary of integers, floats and byte ranges, for the browser and the JVM                                                                                                         |
 
 What the core plays: fixtures with pixels and pixel groups, virtual dimmers and dimmers of fixtures lighting in colors;
@@ -34,12 +38,12 @@ master dimmers and channels held by the host.
 
 |                                    |                                                                                                                                                                                                                                                                                     |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Against today's engines            | 299 `channelValues` cases: 3,811 frames and 209,059 values, all within ±1, 136 of them on an edge decided by rounding ([conformance/DIFFERENCES.md](conformance/DIFFERENCES.md)). 3,018 samples of effect curves, 3,441 of preset steps, 2,417 intensities, 4,610 of pixel patterns |
+| Against the recorded values        | 299 `channelValues` cases: 3,811 frames and 209,059 values, all within ±1, 136 of them on an edge decided by rounding ([conformance/DIFFERENCES.md](conformance/DIFFERENCES.md)). 3,018 samples of effect curves, 3,441 of preset steps, 2,417 intensities, 4,610 of pixel patterns |
 | Between the builds                 | `engine.wasm` in Node comes to the very same bits as the native build for every value of every frame ([conformance/core-digests.json](conformance/core-digests.json))                                                                                                               |
 | Integer time                       | A frame and the frame a month and a year of whole periods later are the same bits                                                                                                                                                                                                   |
 | The format                         | A damaged show is refused by its check; 1,664 shows changed by someone who fixes the checksum play without a crash                                                                                                                                                                  |
-| The stage geometry of the compiler | Bit-identical to the Java code over sweeps of generated inputs                                                                                                                                                                                                                      |
-| Builds                             | Native, `wasm32-unknown-unknown` and `thumbv8m.main-none-eabihf` (the Cortex-M33 of the RP2350)                                                                                                                                                                                     |
+| The stage geometry of the compiler | Compared bit for bit, over sweeps of generated inputs, with the code the recorded values come from                                                                                                                                                                                  |
+| Builds                             | Native, `wasm32-unknown-unknown` and `thumbv8m.main-none-eabihf` (a Cortex-M33)                                                                                                                                                                                                     |
 
 ### What it costs
 
@@ -51,8 +55,8 @@ Measured with `cargo run --release -p lighting-engine-compiler --example bench` 
 | 60 moving heads (17 channels), two scenes |       0.07 ms | 0.48 ms | 0.036 ms |  10 KB |           7 KB |
 | 2,048 RGB pixels with a plasma            |       0.40 ms |  4.1 ms |  0.43 ms | 174 KB |          73 KB |
 
-`engine.wasm` is 0.8 MB, not yet built for size. None of this is the measurement the concept asks for: the frame time on
-the RP2350 and in the JVM runtime on SPARK's hardware, and the compile time in the browser, are still open.
+`engine.wasm` is 0.8 MB, not yet built for size. None of this is a measurement on a target: the frame time on a
+microcontroller and in a JVM, and the compile time in a browser, are for the hosts to measure.
 
 ## Using it
 
@@ -63,17 +67,17 @@ rustup target add wasm32-unknown-unknown thumbv8m.main-none-eabihf
 cargo test --workspace                                                           # everything, natively
 cargo build -p lighting-engine-wasm --target wasm32-unknown-unknown --release    # target/wasm32-unknown-unknown/release/engine.wasm
 node tools/conformance-wasm.mjs                                                  # engine.wasm against the native build
-cargo build -p lighting-engine-core --target thumbv8m.main-none-eabihf --release # the core for the stick
+cargo build -p lighting-engine-core --target thumbv8m.main-none-eabihf --release # the core for a Cortex-M33
 python3 tools/format-tables.py --check                                           # the specification against the code
 ```
 
-### From Rust (the firmware, a test)
+### From Rust (a firmware, a test)
 
 ```rust
 use engine_compiler::{compile_json, Options};
 use engine_core::{Engine, Show};
 
-// the designer or Rocket Show: compile the project (of the current version) when it is loaded
+// a host with the compiler: compile the project (of the current version) when it is loaded or edited
 let compiled = compile_json(&project_json, &Options::default())?;
 
 // every host: check the show once, hand the working memory over, set what plays and render
@@ -98,7 +102,7 @@ The inputs, each with its time in microseconds where it has one (`crates/core/sr
 | The rest       | `set_master_dimmer`, `set_blackout`, `identify`, `reset_fixture`, `lamp_on`, `set_override`, `audio_frame`           |
 | A frame        | `render` writes the universes; `value` and `values` give the value of each channel of each part (for the 3D preview) |
 
-### Through `engine.wasm` (the designer, Rocket Show)
+### Through `engine.wasm` (a browser, a JVM)
 
 The module imports nothing and exports `memory` and the functions of `crates/wasm/src/lib.rs`, all starting with `le_`.
 The host writes bytes into memory from `le_alloc`, calls `le_compile`, reads the show and the index (JSON: which uuid
@@ -107,23 +111,13 @@ has which number) at `le_result_ptr`, makes an engine with `le_engine_new` and c
 
 ## What is not there yet
 
-- **The spike of phase 0**: the frame time on a Pico 2 and in Endive or Chicory on SPARK's hardware, the compile time in
-  the browser, the firmware check. The core builds for the Cortex-M33 but has not run on one, nor on an emulated one in
-  CI.
-- **The three clients** (phases 3 to 5): the designer and Rocket Show still play with their own engines, and nothing
-  publishes `engine.wasm` to npm or Maven. There is no firmware.
-- **Old projects**: the compiler reads projects of version 11. The hosts migrate older ones before they hand them over.
+- **The other two builds of the four** the concept compares: `engine.wasm` in a WebAssembly runtime of the JVM, and the
+  core on a Cortex-M33 (it builds for one, but has not run on one, nor on an emulated one in CI).
+- **The measurements on the targets**, which the hosts make: the frame time on a microcontroller and in a JVM, the
+  compile time in a browser.
+- **Releases**: nothing publishes `engine.wasm` to npm or Maven yet.
+- **Old projects**: the compiler reads projects of version 11. A host migrates older ones before it hands them over.
 - **The audio buses of an effect**: the core takes one stream of audio frames. Adding the buses an effect names stays in
-  the host, which today hands over all of them.
-- **What the hosts ask a project besides frames**, like where the lights of a composition have gone out
-  (`getCompositionEndMillis`).
-- **The licence** (concept, section 13).
-
-## Where the code settles what the concept left open
-
-- Time crosses the boundary as microseconds, and is counted in nanoseconds inside.
-- Where a spot points each moving head is worked out by the compiler and stored in the show, so the core needs no arc
-  tangent, and aiming is as precise as today.
-- The core has no audio chunk in the format, as the concept says: audio is an input of the hosts which have it. A show
-  with effects following the audio sets a feature bit and asks for the memory of six seconds of frames.
-- The patch chunk carries a brightness for each fixture, a master dimmer of its own, which the compiler sets to 1.
+  the host.
+- **What a host asks of a project besides frames**, like when the lights of a composition have gone out.
+- **The licence** (concept, section 10).

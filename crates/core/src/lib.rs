@@ -1,4 +1,4 @@
-//! The lighting engine of Rocket Show, the online designer and Ember: a compiled show, a time and the inputs of the
+//! The core of the lighting engine: a compiled show, a time and the inputs of the
 //! host in, the values of every channel of every fixture and the DMX universes out.
 //!
 //! No standard library and no heap (the working memory is handed over by the caller), single-precision floats with one
@@ -10,7 +10,7 @@
     not(test),
     deny(clippy::indexing_slicing, clippy::unwrap_used, clippy::expect_used, clippy::panic)
 )]
-// a comparison written the way Rocket Show writes it says what happens with a value which is not a number, and a
+// a comparison written with a negation says what happens with a value which is not a number, and a
 // minimum of a maximum never gives one back (a clamp would)
 #![allow(
     clippy::neg_cmp_op_on_partial_ord,

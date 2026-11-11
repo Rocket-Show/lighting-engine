@@ -1,13 +1,13 @@
 //! The precision of a pattern does not depend on how long the effect has run: after three periods and after three
-//! and a billion (or a million millions) a pattern differs only where it does in Rocket Show, which counts the
-//! periods in a double, and never because the part of the running period got lost.
+//! and a billion (or a million millions) a pattern differs only where its formula does, and never because the part of
+//! the running period got lost.
 //!
 //! - A pattern which only depends on the part of the period is the very same, bit for bit.
 //! - So is one whose decimal factors make a billion periods a whole (and even) number of what it counts: the colors
 //!   of the chase (a fifth of a turn of the palette each pass), the plasma (`cycle * 0.7`, `cycle * 0.5`) and so on.
-//! - The sparkle, the fire, the rain and the wipe differ in Rocket Show as well (another slot of the hash, another
-//!   cell of the noise, a speed and a width which are no decimals). They are compared with the formulas of
-//!   `PixelPatterns` worked out here in doubles, with the whole periods in integers of 128 bits.
+//! - The sparkle, the fire, the rain and the wipe differ by their formulas (another slot of the hash, another cell of
+//!   the noise, a speed and a width which are no decimals). They are compared with their formulas worked out here in
+//!   doubles, with the whole periods in integers of 128 bits.
 
 use engine_pixel::math::hash_u32;
 use engine_pixel::{sample, Cycle, Direction, Pattern, PatternSettings, PixelContext, Shape};
@@ -80,7 +80,7 @@ fn variants(pattern: Pattern) -> Vec<PatternSettings<'static>> {
 }
 
 #[test]
-fn is_the_same_after_a_billion_periods_where_rocket_show_is() {
+fn is_the_same_after_a_billion_periods_where_its_formula_is() {
     let patterns = [
         Pattern::Chase,
         Pattern::Comet,
@@ -159,7 +159,7 @@ fn would_lose_the_part_of_the_period_in_a_float() {
     }
 }
 
-// --- the formulas of PixelPatterns in doubles, the whole periods in integers --------------------------------------
+// --- the formulas of the patterns in doubles, the whole periods in integers ---------------------------------------
 
 /// A number with a whole part of any size: `whole + part`, the part between 0 and 1.
 #[derive(Clone, Copy, Debug)]
@@ -192,7 +192,7 @@ impl Big {
         Big::new(self.whole, self.part + value)
     }
 
-    // PixelMath.toInt of the floor
+    // the floor, wrapped around at 32 bits
     fn cell(self) -> i32 {
         self.whole as i32
     }
@@ -255,7 +255,7 @@ const WHOLES: [i64; 6] = [
 ];
 
 #[test]
-fn sparkles_like_rocket_show_after_a_billion_periods() {
+fn sparkles_as_in_doubles_after_a_billion_periods() {
     let mut compared = 0;
     let mut lit = 0;
     let mut largest = 0.0f64;
@@ -318,7 +318,7 @@ fn sparkles_like_rocket_show_after_a_billion_periods() {
 }
 
 #[test]
-fn burns_like_rocket_show_after_a_billion_periods() {
+fn burns_as_in_doubles_after_a_billion_periods() {
     let mut compared = 0;
     let mut lit = 0;
     let mut largest = 0.0f64;
@@ -383,7 +383,7 @@ fn burns_like_rocket_show_after_a_billion_periods() {
 }
 
 #[test]
-fn rains_like_rocket_show_after_a_billion_periods() {
+fn rains_as_in_doubles_after_a_billion_periods() {
     let mut compared = 0;
     let mut lit = 0;
     let mut largest = 0.0f64;
@@ -441,7 +441,7 @@ fn rains_like_rocket_show_after_a_billion_periods() {
 }
 
 #[test]
-fn wipes_like_rocket_show_after_a_billion_periods() {
+fn wipes_as_in_doubles_after_a_billion_periods() {
     let mut compared = 0;
     let mut largest = 0.0f64;
 

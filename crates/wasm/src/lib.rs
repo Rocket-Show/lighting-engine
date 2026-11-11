@@ -373,13 +373,13 @@ macro_rules! engine_calls {
 engine_calls! {
     /// Play the timeline of a composition: bit 0 of the flags as the show (every track), bit 1 as the composition played in between.
     fn le_play_timeline(composition: u32, flags: u32) => |engine| engine.play_timeline(composition, flags);
-    /// Preview what is selected in the designer: the selected preset alone (solo), or else the selected scenes.
+    /// Preview what is selected: the selected preset alone (solo), or else the selected scenes.
     fn le_play_preview(solo: u32) => |engine| engine.play_preview(solo != 0);
     /// Play the scenes picked by hand, from now on.
     fn le_play_live(now_us: u64) => |engine| engine.play_live(now_us);
     /// Play nothing.
     fn le_stop() => |engine| engine.stop();
-    /// The preset selected in the designer and the step being edited in it (-1: none).
+    /// The preset selected for the preview and the step being edited in it (-1: none).
     fn le_select_preset(preset: i32, step: i32) => |engine| engine.select_preset(preset, step);
     /// Whether the steps of the previewed presets run (from a position on) or hold at the step being edited.
     fn le_set_step_preview(running: u32, start_us: i64) => |engine| engine.set_step_preview(running != 0, start_us);

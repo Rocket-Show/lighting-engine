@@ -1,6 +1,6 @@
-//! What the compiler does once at load time, where Rocket Show does it for every frame or when a project is read:
-//! the colors of a palette from their `#rrggbb`, its stops sorted, the frames of a bitmap decoded from base 64. Only
-//! with the `std` feature: this is not part of the core on the chip.
+//! What the compiler does once at load time, so that it is not done for every frame: the colors of a palette from
+//! their `#rrggbb`, its stops sorted, the frames of a bitmap decoded from base 64. Only with the `std` feature: this
+//! is not part of the core on the chip.
 //!
 //! The numbers of the project are doubles. They are worked on as doubles here and rounded to single precision when
 //! they are written.
@@ -8,8 +8,8 @@
 use crate::bitmap::HEADER_LEN;
 use crate::palette::STOP_LEN;
 
-/// A color like `#ff8000` as red, green and blue between 0 and 1 (`PixelPalette.hexToRgb`). None for anything else,
-/// which Rocket Show takes as black.
+/// A color like `#ff8000` as red, green and blue between 0 and 1. None for anything else, which a palette takes as
+/// black.
 pub fn hex_to_rgb(hex: &str) -> Option<[f64; 3]> {
     let digits = hex.strip_prefix('#')?.as_bytes();
 
@@ -23,13 +23,12 @@ pub fn hex_to_rgb(hex: &str) -> Option<[f64; 3]> {
     Some([component(0)?, component(2)?, component(4)?])
 }
 
-/// Red, green and blue between 0 and 1 as a color like `#ff8000`, rounded to the nearest of the 256 steps
-/// (`PixelPalette.rgbToHex`).
+/// Red, green and blue between 0 and 1 as a color like `#ff8000`, rounded to the nearest of the 256 steps.
 pub fn rgb_to_hex(color: [f64; 3]) -> String {
     let mut hex = String::from("#");
 
     for component in color {
-        // (Math.round: half a step goes up, what is not a number is 0)
+        // (half a step goes up, what is not a number is 0)
         let step = if component.is_nan() {
             0
         } else {
@@ -42,7 +41,7 @@ pub fn rgb_to_hex(color: [f64; 3]) -> String {
     hex
 }
 
-// Double.compare
+// the order of two numbers: what is not a number is above every number, -0 below 0
 fn compare(a: f64, b: f64) -> core::cmp::Ordering {
     match (a.is_nan(), b.is_nan()) {
         (true, true) => core::cmp::Ordering::Equal,
@@ -54,8 +53,8 @@ fn compare(a: f64, b: f64) -> core::cmp::Ordering {
 
 /// The stops of a palette of the project (the `position` and the `color` of each, a color which is `null` as `""`)
 /// as the bytes [`Stops::from_bytes`](crate::palette::Stops::from_bytes) reads: sorted by their position, the ones on
-/// the same position in the order they are listed in (what `PixelPalette.colorOf` does for every color), each color
-/// as red, green and blue, black for one which is no `#rrggbb`.
+/// the same position in the order they are listed in, each color as red, green and blue, black for one which is no
+/// `#rrggbb`.
 pub fn encode_stops(stops: &[(f64, &str)]) -> Vec<u8> {
     let mut sorted: Vec<&(f64, &str)> = stops.iter().collect();
     // (a stable sort)
@@ -76,9 +75,8 @@ pub fn encode_stops(stops: &[(f64, &str)]) -> Vec<u8> {
     bytes
 }
 
-/// The bytes of a text in base 64, decoded like `Base64.getDecoder()` of Java does: the alphabet with `+` and `/`,
-/// no line breaks or blanks, the `=` at the end may be left out (but not half of them). None for a text which is no
-/// base 64, where Java throws (and `PixelBitmap` reads a frame of no bytes).
+/// The bytes of a text in base 64: the alphabet with `+` and `/`, no line breaks or blanks, the `=` at the end may be
+/// left out (but not half of them). None for a text which is no base 64 (such a frame of a bitmap has no bytes).
 pub fn decode_base64(text: &str) -> Option<Vec<u8>> {
     let source = text.as_bytes();
     let mut bytes = Vec::with_capacity(source.len() / 4 * 3 + 3);
@@ -145,7 +143,7 @@ pub fn decode_base64(text: &str) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
-/// Bytes as a text in base 64 (with its `=` at the end), like the designer writes the frames of a bitmap.
+/// Bytes as a text in base 64 (with its `=` at the end), like a project holds the frames of a bitmap.
 pub fn encode_base64(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut text = String::with_capacity(bytes.len().div_ceil(3) * 4);
@@ -173,8 +171,8 @@ pub fn encode_base64(bytes: &[u8]) -> String {
     text
 }
 
-/// The values of a bitmap of the project (`bitmap` of a pixel effect), as `PixelBitmap` reads them: a value which is
-/// missing or `null` is `None` (an empty list for a list).
+/// The values of a bitmap of the project (`bitmap` of a pixel effect): a value which is missing or `null` is `None`
+/// (an empty list for a list).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BitmapSource<'a> {
     /// `width`, 0 by default.
@@ -264,9 +262,9 @@ pub fn encode_bitmap(source: &BitmapSource<'_>) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
-/// The seed of the random looking patterns for a fixture (`context.seed` of `mixPixelEffect`): the `seed` of the
-/// effect, a number like in the designer, and the index of the fixture in the preset (which does not count for an
-/// effect spread over the stage), cut to a whole number of 32 bits. Worked out in doubles: it is the input of a hash.
+/// The seed of the random looking patterns for a fixture: the `seed` of the effect (any number, not only a whole
+/// one) and the index of the fixture in the preset (which does not count for an effect spread over the stage), cut to
+/// a whole number of 32 bits. Worked out in doubles: it is the input of a hash.
 pub fn seed_of(effect_seed: f64, fixture_index: i32, stage: bool) -> i32 {
     let fixture = if stage {
         0.0
@@ -274,7 +272,7 @@ pub fn seed_of(effect_seed: f64, fixture_index: i32, stage: bool) -> i32 {
         fixture_index.wrapping_mul(131) as f64
     };
 
-    // PixelMath.toInt
+    // cut off towards zero and wrapped around at 32 bits
     (effect_seed * 7919.0 + fixture) as i64 as i32
 }
 
@@ -393,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn decodes_base_64_like_java() {
+    fn decodes_base_64() {
         assert_eq!(decode_base64(""), Some(vec![]));
         assert_eq!(decode_base64("ChQeKDI="), Some(vec![10, 20, 30, 40, 50]));
         assert_eq!(decode_base64("/wAAAA=="), Some(vec![255, 0, 0, 0]));
@@ -407,7 +405,7 @@ mod tests {
         // bits which are left over do not matter
         assert_eq!(decode_base64("AB=="), Some(vec![0]));
 
-        // what Java throws at
+        // what is no base 64
         for wrong in [
             "!!!",
             "A",
@@ -444,7 +442,7 @@ mod tests {
 
     #[test]
     fn decodes_each_frame_and_none_which_can_not_be_read() {
-        // the bytes 10, 20, 30, 40 and 50, a frame which is no base 64 and one which is missing (PixelBitmapTest)
+        // the bytes 10, 20, 30, 40 and 50, a frame which is no base 64 and one which is missing
         let bytes = encode_bitmap(&BitmapSource {
             width: Some(2),
             height: Some(2),
@@ -503,7 +501,7 @@ mod tests {
 
     #[test]
     fn shows_each_frame_as_long_as_it_lasts() {
-        // 100 ms, 300 ms and the default of 100 ms for the one without a length (PixelBitmapTest)
+        // 100 ms, 300 ms and the default of 100 ms for the one without a length
         let bytes = encode_bitmap(&BitmapSource {
             width: Some(1),
             height: Some(1),
