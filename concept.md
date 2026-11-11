@@ -3,9 +3,11 @@
 One lighting engine for Rocket Show, the online designer and Ember: written once in Rust, built as a crate inside the
 Ember firmware and as one WebAssembly file that both the designer and Rocket Show load.
 
-Status: concept, 11 November 2026. No code yet. Figures marked _estimate_, _proposed_ or _to measure_ are not measured;
-the measured frame times come from the Java engine. The code of the three clients was read on 11 November 2026
-(`rocketshow` and `show-designer` on `develop`, `ember` with its concept of 7 November).
+Status: concept, 11 November 2026. The core, the compiler and `engine.wasm` of phases 1 and 2 exist in this repository
+and pass the conformance cases (see `README.md`); the spike of phase 0 on the hardware and the three clients are still
+to do. Figures marked _estimate_, _proposed_ or _to measure_ are not measured; the measured frame times come from the
+Java engine. The code of the three clients was read on 11 November 2026 (`rocketshow` and `show-designer` on `develop`,
+`ember` with its concept of 7 November).
 
 ## 1. Decisions
 
@@ -151,15 +153,17 @@ clock moves into the core, because tap and beat one must behave the same on the 
 
 - Addition, subtraction, multiplication, division and square root are rounded the same way on the chip, in WebAssembly
   and in the JVM. They need no care beyond using `f32` everywhere.
-- Sine, arc tangent and `pow` come from the `libm` crate on all three targets, the chip included. It replaces the
-  hand-written `ArcTangent` and `CycleSine`.
+- The sine comes from the `libm` crate on all three targets, the chip included, after the cycle is reduced to a quarter
+  the way `CycleSine` does it. The core needs no arc tangent and no `pow`: where a spot points each moving head is
+  worked out by the compiler, in double precision, and stored in the show.
 - No fused multiply-add, no NaN reaching an output, and float to integer only through the saturating `as` cast.
 - Numbers from the project are rounded to `f32` once, in the compiler. JavaScript never does engine arithmetic on them.
 
 ### Time as a 64-bit integer, reduced before it becomes a float
 
 - The host passes microseconds as a `u64`. A 32-bit count of milliseconds would wrap after 49.7 days, which a museum
-  loop can reach.
+  loop can reach. Inside, the core counts nanoseconds in an `i64` (292 years), so a period following the tempo is whole
+  to a billionth of a second.
 - A float of seconds resolves a millisecond only up to 2.3 hours (2^13 s), and a float of milliseconds counts whole
   milliseconds only up to 4.7 hours (2^24 ms).
 - Each effect takes its phase as `(time − start) mod period` in integers and only then converts to a float between 0
