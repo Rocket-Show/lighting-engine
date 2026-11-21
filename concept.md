@@ -254,7 +254,6 @@ know their hardware and their budgets. From phase 2 on, a new feature of the eng
 
 ## 10. Open questions
 
-- The licence of the core. This repository has no licence file until that is decided.
 - Does the audio input stay in the core, as it is now, or do the effects that follow audio go altogether? And who adds
   up the audio buses an effect names: the host, as today, or the core?
 - What a host asks of a project besides frames (when the lights of a composition have gone out, which buses a project

@@ -109,6 +109,10 @@ The host writes bytes into memory from `le_alloc`, calls `le_compile`, reads the
 has which number) at `le_result_ptr`, makes an engine with `le_engine_new` and calls the inputs above with its handle.
 `tools/conformance-wasm.mjs` is a complete host.
 
+## Licence
+
+Open source under the GNU General Public License, version 3 or later ([LICENSE](LICENSE)), decided on 21 November 2026.
+
 ## What is not there yet
 
 - **The other two builds of the four** the concept compares: `engine.wasm` in a WebAssembly runtime of the JVM, and the
@@ -120,4 +124,3 @@ has which number) at `le_result_ptr`, makes an engine with `le_engine_new` and c
 - **The audio buses of an effect**: the core takes one stream of audio frames. Adding the buses an effect names stays in
   the host.
 - **What a host asks of a project besides frames**, like when the lights of a composition have gone out.
-- **The licence** (concept, section 10).
