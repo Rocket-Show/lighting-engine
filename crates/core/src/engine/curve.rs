@@ -224,6 +224,11 @@ pub fn curve_value(effect: &Effect, position: f32) -> f32 {
     value.min(1.0).max(0.0)
 }
 
+/// The value a curve puts on its channels at a moment on a fixture, none if it does not apply at this moment.
+pub fn value_at(effect: &Effect, time: Ns, index: u32, count: u32, bpm: Option<Fix>) -> Option<f32> {
+    value_phased(effect, time, phasing(effect, index, count, bpm), bpm)
+}
+
 /// The value a curve puts on its channels at a moment on a fixture the chase shifts by a time, none if it does not
 /// apply at this moment.
 pub fn value_phased(effect: &Effect, time: Ns, phasing: Ns, bpm: Option<Fix>) -> Option<f32> {
