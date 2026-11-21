@@ -112,8 +112,41 @@ pub(super) struct Shared<'f> {
     audio: AudioCache<'f>,
     cycles: [Option<(Running, Option<Cycle>)>; CACHED],
     next_cycle: usize,
+    curves: [Option<(Curve, Option<f32>)>; CURVES],
+    next_curve: usize,
+    mappings: [Option<(Mapping, Option<f32>)>; MAPPINGS],
+    next_mapping: usize,
     scratch: Scratch,
 }
+
+/// A curve on fixtures the chase shifts by the same time: which layer plays it, which effect of its preset it is,
+/// and the time. In a frame, they all come to the same value (before the fan swings it).
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct Curve {
+    pub layer: u32,
+    pub effect: u32,
+    pub phasing: Ns,
+}
+
+/// The curves a frame keeps the value of: the fixtures of a preset are worked out one after the other, so the curves
+/// of the presets playing at once are enough.
+const CURVES: usize = 8;
+
+/// A value of a curve on a channel: which channel of the show (where its list starts and its place in it), which
+/// capability of the curve (where the list of them starts and its place in it), the value of the curve, and whether
+/// the preset mirrors it. The same come to the same value of the channel.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct Mapping {
+    pub chans: u32,
+    pub channel: u32,
+    pub caps: u32,
+    pub cap: u32,
+    pub value: u32,
+    pub mirror: bool,
+}
+
+/// The values on channels a frame keeps: the channels a curve plays on in one fixture.
+const MAPPINGS: usize = 4;
 
 impl<'f> Shared<'f> {
     pub fn new(frames: &'f RingFrames<'f>, time: Ns) -> Self {
@@ -121,6 +154,10 @@ impl<'f> Shared<'f> {
             audio: AudioCache::new(frames, time),
             cycles: [None; CACHED],
             next_cycle: 0,
+            curves: [None; CURVES],
+            next_curve: 0,
+            mappings: [None; MAPPINGS],
+            next_mapping: 0,
             scratch: Scratch::new(),
         }
     }
@@ -144,6 +181,49 @@ impl<'f> Shared<'f> {
         }
 
         cycle
+    }
+
+    /// The value of a curve on the fixtures the chase shifts by the same time (none: it does not apply at this
+    /// moment), worked out the first time it is asked for in the frame. A curve without a chase is worked out once for
+    /// all the fixtures of its preset.
+    pub fn curve(&mut self, curve: Curve, work_out: impl FnOnce() -> Option<f32>) -> Option<f32> {
+        for (known, value) in self.curves.iter().flatten() {
+            if *known == curve {
+                return *value;
+            }
+        }
+
+        let value = work_out();
+        let index = self.next_curve % CURVES;
+
+        self.next_curve = index + 1;
+
+        if let Some(entry) = self.curves.get_mut(index) {
+            *entry = Some((curve, value));
+        }
+
+        value
+    }
+
+    /// The value a curve puts on a channel (none: the channel doesn't take it), worked out the first time it is asked
+    /// for in the frame: the fixtures of one model which a curve without a chase plays all ask for the same.
+    pub fn mapping(&mut self, mapping: Mapping, work_out: impl FnOnce() -> Option<f32>) -> Option<f32> {
+        for (known, value) in self.mappings.iter().flatten() {
+            if *known == mapping {
+                return *value;
+            }
+        }
+
+        let value = work_out();
+        let index = self.next_mapping % MAPPINGS;
+
+        self.next_mapping = index + 1;
+
+        if let Some(entry) = self.mappings.get_mut(index) {
+            *entry = Some((mapping, value));
+        }
+
+        value
     }
 }
 

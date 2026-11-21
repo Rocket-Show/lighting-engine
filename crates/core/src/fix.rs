@@ -38,6 +38,13 @@ fn divide_rounded(product: i128, divisor: i128) -> i64 {
     let product = product.unsigned_abs();
     let divisor = divisor.unsigned_abs();
 
+    // A factor of two which both have doesn't change the quotient rounded half up, as long as the divisor stays whole:
+    // (2p + d) / 2d can't be a whole number for an odd d, so rounding p by d comes to the same. Taken out, the numbers
+    // often fit into 64 bits: the place of a fixture in a chase is its step times whole cycles in 32.32 over the steps
+    // in 32.32.
+    let shift = product.trailing_zeros().min(divisor.trailing_zeros());
+    let (product, divisor) = (product >> shift, divisor >> shift);
+
     // The same division in 64 bits where both fit into them: a processor of 32 bits takes many times as long for one
     // of 128 bits, and this is asked for a fixture, an effect and a frame at a time.
     let magnitude = match (u64::try_from(product), u64::try_from(divisor)) {
@@ -390,6 +397,24 @@ mod tests {
         }
 
         assert_eq!(compared, 425 * 425 * 25);
+
+        // the place of a fixture in a chase: its step times the cycles (32.32) times the period, over the steps (32.32)
+        for &cycles in &[FIX_ONE, 2 * FIX_ONE, FIX_ONE / 2, 3 * FIX_ONE / 7, 1] {
+            for &length in &[1i64, 2_000_000_000, 3_600_000_000_000, 1 << 50] {
+                for &steps in &[1i64, 3, 512, 513, 100_000] {
+                    for step in [0i64, 1, 2, 255, 511, 99_999] {
+                        assert_eq!(
+                            mul_div2(step * cycles, length, steps, FIX_ONE),
+                            divide_rounded_wide(
+                                (step * cycles) as i128 * length as i128,
+                                steps as i128 * FIX_ONE as i128
+                            ),
+                            "the chase: step {step} of {steps}, {cycles} cycles of {length}"
+                        );
+                    }
+                }
+            }
+        }
 
         // the place inside a period, as an effect asks for it: a rest below its divisor
         for &length in &[

@@ -25,8 +25,8 @@ use super::channel::{
     axis_degrees, axis_range, axis_value, brightness_of_value, brightness_value, curve_value, dim, is_command,
     is_overriding, is_positioned, matches, pan_tilt_degrees, pan_tilt_value, positioned_step_value, type_mask, Ctx,
 };
-use super::curve::{capability_value, fanned, movement_at, run_loop, value_at};
-use super::pixelfx::{mix_pixel, Base, RingFrames, Shared};
+use super::curve::{capability_value, fanned, movement_at, phasing, run_loop, value_phased};
+use super::pixelfx::{mix_pixel, Base, Curve, Mapping, RingFrames, Shared};
 use super::steps::{state_at, StepSel};
 use super::values::{Snapshot, Vals};
 use super::{
@@ -91,6 +91,30 @@ pub(super) fn curve_bpm(layer: &Layer, frame: &Frame) -> Option<Fix> {
         Some(frame.clock_bpm)
     } else {
         frame.programmed_bpm
+    }
+}
+
+/// Whether the fixtures of a curve come to the same value one after the other, so the frame keeps it: where the chase
+/// doesn't shift them (a curve without one, and the first step of a chase) or shifts them in groups. Elsewhere each
+/// fixture has a value of its own, and keeping it would only cost time.
+fn shared_curve(effect: &Effect, phasing: Ns) -> bool {
+    phasing == 0 || effect.group_size > 1
+}
+
+/// The value of a curve on a fixture (none: it doesn't apply at this moment), the one the frame keeps where the
+/// fixtures share it.
+fn curve_of(
+    shared: &mut Shared,
+    alike: bool,
+    curve: Curve,
+    effect: &Effect,
+    time: Ns,
+    bpm: Option<Fix>,
+) -> Option<f32> {
+    if alike {
+        shared.curve(curve, || value_phased(effect, time, curve.phasing, bpm))
+    } else {
+        value_phased(effect, time, curve.phasing, bpm)
     }
 }
 
@@ -529,11 +553,18 @@ fn mix_effects(
 
         let bpm = curve_bpm(layer, frame);
         let time = curve_time(&effect, layer, ctx.count, bpm);
+        let curve = Curve {
+            layer: layer_index as u32,
+            effect: effect_index as u32,
+            phasing: phasing(&effect, ctx.index, ctx.count, bpm),
+        };
+        // the fixtures share what the curve comes to where the chase shifts them alike (see `shared_curve`)
+        let alike = shared_curve(&effect, curve.phasing);
 
         // swung as far as the place of the fixture in the fan of the preset says
         let value = match fanned(
             &effect,
-            value_at(&effect, time, ctx.index, ctx.count, bpm),
+            curve_of(shared, alike, curve, &effect, time, bpm),
             ctx.fan_place,
         ) {
             Some(value) => value,
@@ -541,7 +572,7 @@ fn mix_effects(
             None => continue,
         };
 
-        for cap in show.iter(effect.caps) {
+        for (cap_index, cap) in show.iter(effect.caps).enumerate() {
             if follows_presets(cap.ty) {
                 continue;
             }
@@ -561,10 +592,27 @@ fn mix_effects(
                     _ => continue,
                 }
 
-                if let Some(chan) = show.get(info.layout.channels, channel) {
-                    if let Some(channel_value) = curve_value(show, &chan, &played, mirror) {
-                        vals.mix(channel, channel_value, intensity);
-                    }
+                let work_out = || {
+                    show.get(info.layout.channels, channel)
+                        .and_then(|chan| curve_value(show, &chan, &played, mirror))
+                };
+                let channel_value = if alike {
+                    let mapping = Mapping {
+                        chans: info.layout.channels.offset,
+                        channel: channel as u32,
+                        caps: effect.caps.offset,
+                        cap: cap_index as u32,
+                        value: value.to_bits(),
+                        mirror,
+                    };
+
+                    shared.mapping(mapping, work_out)
+                } else {
+                    work_out()
+                };
+
+                if let Some(channel_value) = channel_value {
+                    vals.mix(channel, channel_value, intensity);
                 }
             }
         }
@@ -757,9 +805,15 @@ fn mix_following(
         }
 
         // a curve, swung as far as the place of the fixture in the fan of the preset says
+        let curve = Curve {
+            layer: layer_index as u32,
+            effect: effect_index as u32,
+            phasing: phasing(&effect, ctx.index, ctx.count, bpm),
+        };
+        let alike = shared_curve(&effect, curve.phasing);
         let value = match fanned(
             &effect,
-            value_at(&effect, time, ctx.index, ctx.count, bpm),
+            curve_of(shared, alike, curve, &effect, time, bpm),
             ctx.fan_place,
         ) {
             Some(value) => value,

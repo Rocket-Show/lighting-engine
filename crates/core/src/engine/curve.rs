@@ -96,8 +96,13 @@ fn cycle_of(shifted: Ns, length: Ns) -> Cycle {
 /// How many periods an effect has run through at a moment on a fixture, counted from where its phase puts its start,
 /// or none if it does not apply at this moment.
 pub fn cycles_at(effect: &Effect, time: Ns, index: u32, count: u32, bpm: Option<Fix>) -> Option<Cycle> {
+    cycles_phased(effect, time, phasing(effect, index, count, bpm), bpm)
+}
+
+/// The same, for a fixture the chase shifts by a time (see `phasing`): all the fixtures it shifts by the same time
+/// are at the same place.
+pub fn cycles_phased(effect: &Effect, time: Ns, phasing: Ns, bpm: Option<Fix>) -> Option<Cycle> {
     let length = length(effect, bpm);
-    let phasing = phasing(effect, index, count, bpm);
     let phase = phase(effect, bpm);
 
     if let Some(run_end) = run_end(effect, bpm) {
@@ -219,9 +224,10 @@ pub fn curve_value(effect: &Effect, position: f32) -> f32 {
     value.min(1.0).max(0.0)
 }
 
-/// The value a curve puts on its channels at a moment on a fixture, none if it does not apply at this moment.
-pub fn value_at(effect: &Effect, time: Ns, index: u32, count: u32, bpm: Option<Fix>) -> Option<f32> {
-    cycles_at(effect, time, index, count, bpm).map(|cycle| curve_value(effect, cycle.frac))
+/// The value a curve puts on its channels at a moment on a fixture the chase shifts by a time, none if it does not
+/// apply at this moment.
+pub fn value_phased(effect: &Effect, time: Ns, phasing: Ns, bpm: Option<Fix>) -> Option<f32> {
+    cycles_phased(effect, time, phasing, bpm).map(|cycle| curve_value(effect, cycle.frac))
 }
 
 /// How much of its movement an effect makes on a fixture by its place in the fan: from -1 to 1.
