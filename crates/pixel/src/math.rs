@@ -93,8 +93,11 @@ pub fn sin_cycle(position: f32) -> f32 {
     let quarter = libm::floorf(position * 4.0 + 0.5);
     let angle = TAU * (position - quarter / 4.0);
 
-    // a float this big is a multiple of four (and a cast would stop at the highest integer)
-    let quadrant = if libm::fabsf(quarter) < 9.0e18 {
+    // a float this big is a multiple of four (and a cast would stop at the highest integer); a small one is cast in
+    // 32 bits, which a processor of 32 bits does itself: the two lowest bits are the same
+    let quadrant = if libm::fabsf(quarter) < 2.0e9 {
+        ((quarter as i32) & 3) as i64
+    } else if libm::fabsf(quarter) < 9.0e18 {
         (quarter as i64) & 3
     } else {
         0
@@ -105,6 +108,72 @@ pub fn sin_cycle(position: f32) -> f32 {
         1 => libm::cosf(angle),
         2 => -libm::sinf(angle),
         _ => -libm::cosf(angle),
+    }
+}
+
+/// The sines of a frame which are asked for again with the same angle: the pixels of a column, of a row or of the
+/// whole picture share them. A sine is taken from here only for the very bits of the angle it was worked out for, so
+/// every pixel comes out bit for bit as without it; a host without a processor for the maths of a sine works out one
+/// for a column where it worked out one for every pixel.
+#[derive(Clone, Copy)]
+pub struct Scratch {
+    sines: [[Sine; Scratch::PLACES]; Scratch::KINDS],
+}
+
+#[derive(Clone, Copy)]
+struct Sine {
+    known: bool,
+    angle: u32,
+    value: f32,
+}
+
+impl Scratch {
+    /// the sines kept of a kind: one for a place (a column, a row, a step of a trail), the places beyond sharing
+    const PLACES: usize = 64;
+    const KINDS: usize = 4;
+
+    /// the sine of a plasma which only changes along the columns, and the one along the rows
+    pub const ALONG_X: usize = 0;
+    pub const ALONG_Y: usize = 1;
+    /// the two sines of a point on the trail of an orbit
+    pub const TRAIL_X: usize = 2;
+    pub const TRAIL_Y: usize = 3;
+
+    pub const fn new() -> Self {
+        Scratch {
+            sines: [[Sine {
+                known: false,
+                angle: 0,
+                value: 0.0,
+            }; Scratch::PLACES]; Scratch::KINDS],
+        }
+    }
+
+    /// [`sin_cycle`] of a position, kept for the place it was asked at.
+    pub fn sin_cycle(&mut self, kind: usize, place: i32, position: f32) -> f32 {
+        let angle = position.to_bits();
+        let place = (place as u32 as usize) % Scratch::PLACES;
+
+        match self.sines.get_mut(kind).and_then(|kind| kind.get_mut(place)) {
+            Some(sine) => {
+                if !sine.known || sine.angle != angle {
+                    *sine = Sine {
+                        known: true,
+                        angle,
+                        value: sin_cycle(position),
+                    };
+                }
+
+                sine.value
+            }
+            None => sin_cycle(position),
+        }
+    }
+}
+
+impl Default for Scratch {
+    fn default() -> Self {
+        Scratch::new()
     }
 }
 

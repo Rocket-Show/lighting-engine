@@ -26,7 +26,9 @@
 use crate::audio::{PixelAudio, BANDS};
 use crate::bitmap::Bitmap;
 use crate::cycle::Cycle;
-use crate::math::{band, clamp01, fract, hash, hash_u32, maxf, minf, sin_cycle, smooth_step, to_int, triangle, TAU};
+use crate::math::{
+    band, clamp01, fract, hash, hash_u32, maxf, minf, sin_cycle, smooth_step, to_int, triangle, Scratch, TAU,
+};
 use crate::settings::{
     Align, Direction, Fit, ImageColors, Pattern, PatternSettings, PixelContext, Scroll, Shape, TextColors,
 };
@@ -93,14 +95,14 @@ fn is_matrix(context: &PixelContext) -> bool {
     context.rows > 1 && context.aspect_y > 0.2
 }
 
-// where the dot of an orbit is at a moment of its period, from -1 to 1 on the y axis (up being positive): the shapes
-// of the movements of the moving heads. On the x axis it is the sine of the moment.
-fn orbit_y(shape: Shape, moment: f32) -> f32 {
+// Where the dot of an orbit is at a moment of its period, from -1 to 1 on the y axis (up being positive), is the
+// sine of this: the shapes of the movements of the moving heads. On the x axis it is the sine of the moment.
+fn orbit_angle(shape: Shape, moment: f32) -> f32 {
     match shape {
-        Shape::Figure8 => sin_cycle(moment * 2.0),
-        Shape::Line => sin_cycle(moment),
-        Shape::Wave => sin_cycle(moment * 3.0),
-        _ => sin_cycle(moment + 0.25),
+        Shape::Figure8 => moment * 2.0,
+        Shape::Line => moment,
+        Shape::Wave => moment * 3.0,
+        _ => moment + 0.25,
     }
 }
 
@@ -281,6 +283,19 @@ pub fn sample(
     audio: Option<&PixelAudio<'_>>,
     out: &mut [f32; 5],
 ) {
+    sample_with(settings, cycle, context, audio, &mut Scratch::new(), out);
+}
+
+/// [`sample`] for one pixel after the other of a frame: what the pixels have in common is kept in the scratch
+/// instead of being worked out for each of them. The same values, bit for bit.
+pub fn sample_with(
+    settings: &PatternSettings<'_>,
+    cycle: Cycle,
+    context: &PixelContext,
+    audio: Option<&PixelAudio<'_>>,
+    scratch: &mut Scratch,
+    out: &mut [f32; 5],
+) {
     let cycle = Cycle::new(cycle.whole, cycle.frac);
     // the part of the running period, and the periods run
     let moment = cycle.frac;
@@ -381,8 +396,13 @@ pub fn sample(
             let dx = x - scale / 2.0;
             let dy = y - scale / 2.0;
             // (a sine is the same a whole period on: the parts of the periods are enough)
-            let value = sin_cycle(x + moment)
-                + sin_cycle(y * 0.9 - cycle.mul_ratio(7, 10).frac + 0.16)
+            // (the first sine is the same for a column and the second one for a row)
+            let value = scratch.sin_cycle(Scratch::ALONG_X, context.column, x + moment)
+                + scratch.sin_cycle(
+                    Scratch::ALONG_Y,
+                    context.row,
+                    y * 0.9 - cycle.mul_ratio(7, 10).frac + 0.16,
+                )
                 + sin_cycle((x + y) * 0.7 + cycle.mul_ratio(1, 2).frac)
                 + sin_cycle(libm::sqrtf(dx * dx + dy * dy) * 1.3 - moment);
 
@@ -610,12 +630,22 @@ pub fn sample(
             let mut level = 0.0;
             let mut place = 0.0;
 
-            for behind in 0..7 {
-                let behind = behind as f32;
+            for step in 0..7 {
+                let behind = step as f32;
                 let at = fract(moment - behind * gap);
-                let dx = (context.x - (0.5 + 0.36 * sin_cycle(at))) * context.aspect_x;
-                let dy = (context.y - (0.5 - 0.36 * orbit_y(settings.shape, at))) * context.aspect_y;
-                let distance = libm::sqrtf(dx * dx + dy * dy) / radius;
+                // (where the dot and its trail are is the same for every pixel)
+                let dot_x = scratch.sin_cycle(Scratch::TRAIL_X, step, at);
+                let dot_y = scratch.sin_cycle(Scratch::TRAIL_Y, step, orbit_angle(settings.shape, at));
+                let dx = (context.x - (0.5 + 0.36 * dot_x)) * context.aspect_x;
+                let dy = (context.y - (0.5 - 0.36 * dot_y)) * context.aspect_y;
+                let far = dx * dx + dy * dy;
+
+                // too far from the dot to glow at all (it stops at the square root of two radiuses): nothing to weigh
+                if far >= 4.0 * radius * radius {
+                    continue;
+                }
+
+                let distance = libm::sqrtf(far) / radius;
                 let glow = clamp01(1.0 - distance * distance * 0.5);
                 let weight = glow * glow * (1.0 - behind / 7.0);
 
@@ -1260,6 +1290,7 @@ mod tests {
             },
         );
         let mut out = [0.0; 5];
+        let mut scratch = Scratch::new();
         let mut count = 0u32;
         // a walk through the values which looks random, the same every time
         let mut pick = 0usize;
@@ -1313,11 +1344,77 @@ mod tests {
                     "{settings:?} {context:?} {cycle:?}: {out:?}"
                 );
                 assert!(out[0].is_finite(), "{settings:?} {context:?} {cycle:?}: {out:?}");
+
+                // and the same with what was kept of all the pixels before this one
+                let mut kept = [0.0; 5];
+
+                sample_with(
+                    &settings,
+                    cycle,
+                    &context,
+                    if round % 3 == 0 { Some(&audio) } else { None },
+                    &mut scratch,
+                    &mut kept,
+                );
+                assert_eq!(
+                    out.map(f32::to_bits),
+                    kept.map(f32::to_bits),
+                    "{settings:?} {context:?} {cycle:?}"
+                );
                 count += 1;
             }
         }
 
         assert_eq!(count, 24 * 6000);
+    }
+
+    #[test]
+    fn a_frame_comes_out_the_same_with_what_its_pixels_share_kept() {
+        // one scratch through every frame, as the engine keeps one through all the pixels of a frame: nothing kept
+        // for one pixel, one moment or one pattern may show in another
+        let mut scratch = Scratch::new();
+        let mut pixels = 0u32;
+
+        for pattern in 0..=23u8 {
+            for shape in 0..11u8 {
+                for (size, softness) in [(0.0, 0.0), (0.5, 0.5), (1.0, 0.2)] {
+                    let settings = PatternSettings {
+                        pattern: Pattern::from_u8(pattern),
+                        shape: Shape::from_u8(shape),
+                        size,
+                        softness,
+                        ..PatternSettings::DEFAULT
+                    };
+
+                    for frame in 0..7 {
+                        let cycle = Cycle::new(frame / 3, frame as f32 * 0.137);
+                        // a matrix, a bar with more pixels than sines are kept for, and a single pixel
+                        let pictures = [(17, 10), (150, 1), (1, 1)];
+
+                        for (columns, rows) in pictures {
+                            for row in 0..rows {
+                                for column in 0..columns {
+                                    let context = matrix(column, row, columns, rows);
+                                    let mut alone = [0.0; 5];
+                                    let mut kept = [0.0; 5];
+
+                                    sample(&settings, cycle, &context, None, &mut alone);
+                                    sample_with(&settings, cycle, &context, None, &mut scratch, &mut kept);
+                                    assert_eq!(
+                                        alone.map(f32::to_bits),
+                                        kept.map(f32::to_bits),
+                                        "{settings:?} {context:?} {cycle:?}"
+                                    );
+                                    pixels += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        assert_eq!(pixels, 24 * 11 * 3 * 7 * (170 + 150 + 1));
     }
 }
 

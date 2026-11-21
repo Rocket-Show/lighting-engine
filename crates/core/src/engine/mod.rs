@@ -1177,7 +1177,11 @@ impl<'a> Engine<'a> {
     }
 
     /// Work out the values of all fixtures for a moment and write the universes: 512 bytes for each universe of the
-    /// show, one after the other (a shorter buffer gets the universes fitting into it).
+    /// show, one after the other. A shorter buffer gets the universes fitting into it, and the fixtures on the others
+    /// are not worked out: a host which sends fewer universes than a show has doesn't pay for the rest ([`value`] of
+    /// their parts stays what it was).
+    ///
+    /// [`value`]: Engine::value
     pub fn render(&mut self, now_us: u64, universes: &mut [u8]) {
         let now = to_ns(now_us);
         self.sync_beat_clock(now);
@@ -1199,7 +1203,13 @@ impl<'a> Engine<'a> {
             clock_bpm: self.rt.beat.bpm(),
         };
 
-        frame::render_parts(&self.show, &self.rt, &mut self.m, &frame);
+        frame::render_parts(
+            &self.show,
+            &self.rt,
+            &mut self.m,
+            &frame,
+            universes.len() / UNIVERSE_SIZE,
+        );
         frame::write_universes(&self.show, &self.rt, &self.m, universes);
     }
 

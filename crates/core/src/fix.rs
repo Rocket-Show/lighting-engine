@@ -35,8 +35,16 @@ fn divide_rounded(product: i128, divisor: i128) -> i64 {
     }
 
     let negative = (product < 0) != (divisor < 0);
-    let magnitude = (product.unsigned_abs().saturating_add(divisor.unsigned_abs() / 2) / divisor.unsigned_abs())
-        .min(i64::MAX as u128) as i128;
+    let product = product.unsigned_abs();
+    let divisor = divisor.unsigned_abs();
+
+    // The same division in 64 bits where both fit into them: a processor of 32 bits takes many times as long for one
+    // of 128 bits, and this is asked for a fixture, an effect and a frame at a time.
+    let magnitude = match (u64::try_from(product), u64::try_from(divisor)) {
+        (Ok(product), Ok(divisor)) if product <= u64::MAX - divisor / 2 => ((product + divisor / 2) / divisor) as u128,
+        _ => product.saturating_add(divisor / 2) / divisor,
+    }
+    .min(i64::MAX as u128) as i128;
 
     saturate(if negative { -magnitude } else { magnitude })
 }
@@ -93,7 +101,19 @@ pub fn ratio(a: i64, b: i64) -> f32 {
     }
 
     // the quotient in 32.32 fixed-point first: the precision of the result doesn't depend on how large both are
-    let quotient = ((a as i128) << 32) / b as i128;
+    let quotient = match (u64::try_from(a), u64::try_from(b)) {
+        // The same quotient by a long division in two steps of 16 bits, each in 64 bits, where the numbers allow it
+        // (a part of a whole below 2^48, as a place inside the period of an effect is): a processor of 32 bits takes
+        // many times as long for a division of 128 bits.
+        (Ok(a), Ok(b)) if a < b && b < 1 << 48 => {
+            let first = (a << 16) / b;
+            let rest = (a << 16) % b;
+            let second = (rest << 16) / b;
+
+            ((first << 16) | second) as i128
+        }
+        _ => ((a as i128) << 32) / b as i128,
+    };
     saturate(quotient) as f32 * (1.0 / 4_294_967_296.0)
 }
 
@@ -278,6 +298,126 @@ impl BeatClock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // the divisions as they are written down, in 128 bits throughout
+    fn divide_rounded_wide(product: i128, divisor: i128) -> i64 {
+        if divisor == 0 {
+            return 0;
+        }
+
+        let negative = (product < 0) != (divisor < 0);
+        let magnitude = (product.unsigned_abs().saturating_add(divisor.unsigned_abs() / 2) / divisor.unsigned_abs())
+            .min(i64::MAX as u128) as i128;
+
+        saturate(if negative { -magnitude } else { magnitude })
+    }
+
+    fn ratio_wide(a: i64, b: i64) -> f32 {
+        if b == 0 {
+            return 0.0;
+        }
+
+        saturate(((a as i128) << 32) / b as i128) as f32 * (1.0 / 4_294_967_296.0)
+    }
+
+    #[test]
+    fn the_short_ways_divide_like_the_long_one() {
+        let edges = [
+            0i64,
+            1,
+            2,
+            3,
+            999,
+            1_000_000,
+            2_000_000_000,
+            (1 << 31) - 1,
+            1 << 31,
+            (1 << 32) - 1,
+            1 << 32,
+            (1 << 32) + 1,
+            (1 << 47) + 12_345,
+            (1 << 48) - 1,
+            1 << 48,
+            (1 << 48) + 1,
+            1 << 62,
+            i64::MAX - 1,
+            i64::MAX,
+            i64::MIN,
+            i64::MIN + 1,
+            -1,
+            -2,
+            -1_000_000_007,
+            -(1 << 40),
+        ];
+        // a walk through numbers of every size which looks random, the same every time
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        let mut next = || {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            // (of a random length, so small numbers come as often as large ones)
+            let bits = (state >> 58) as u32 % 64;
+            ((state >> 1) as i64) >> bits
+        };
+        let mut numbers = edges.to_vec();
+
+        for _ in 0..400 {
+            numbers.push(next());
+        }
+
+        let mut compared = 0u32;
+
+        for &a in &numbers {
+            for &b in &numbers {
+                assert_eq!(ratio(a, b).to_bits(), ratio_wide(a, b).to_bits(), "ratio({a}, {b})");
+
+                for &c in &edges {
+                    let product = a as i128 * b as i128;
+
+                    assert_eq!(
+                        mul_div(a, b, c),
+                        divide_rounded_wide(product, c as i128),
+                        "mul_div({a}, {b}, {c})"
+                    );
+                    assert_eq!(
+                        mul_div2(a, b, c, FIX_ONE),
+                        divide_rounded_wide(product, c as i128 * FIX_ONE as i128),
+                        "mul_div2({a}, {b}, {c}, one)"
+                    );
+                    compared += 1;
+                }
+            }
+        }
+
+        assert_eq!(compared, 425 * 425 * 25);
+
+        // the place inside a period, as an effect asks for it: a rest below its divisor
+        for &length in &[
+            1i64,
+            7,
+            1_000_000,
+            2_000_000_000,
+            3_600_000_000_000,
+            (1 << 48) - 1,
+            1 << 48,
+            1 << 50,
+        ] {
+            for step in 0..2000i64 {
+                let rest = (length / 2000).max(1) * step % length;
+
+                assert_eq!(
+                    ratio(rest, length).to_bits(),
+                    ratio_wide(rest, length).to_bits(),
+                    "ratio({rest}, {length})"
+                );
+            }
+
+            assert_eq!(
+                ratio(length - 1, length).to_bits(),
+                ratio_wide(length - 1, length).to_bits()
+            );
+        }
+    }
 
     #[test]
     fn divisions_round_and_floor() {

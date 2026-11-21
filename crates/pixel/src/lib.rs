@@ -40,8 +40,9 @@ pub mod settings;
 pub use audio::{AudioFrames, AudioSettings, PixelAudio};
 pub use bitmap::Bitmap;
 pub use cycle::Cycle;
+pub use math::Scratch;
 pub use palette::{color_of, shades_of, Stop, Stops};
-pub use pattern::sample;
+pub use pattern::{sample, sample_with};
 pub use settings::{
     Align, AudioBand, AudioFollows, AudioSource, Between, Blend, Direction, Fit, ImageColors, Pattern, PatternSettings,
     PixelContext, Repeat, Scroll, Shape, Spread, TextColors, View,

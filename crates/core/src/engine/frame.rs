@@ -20,7 +20,7 @@ use super::channel::{
     is_overriding, is_positioned, matches, pan_tilt_degrees, pan_tilt_value, positioned_step_value, type_mask, Ctx,
 };
 use super::curve::{capability_value, fanned, movement_at, run_loop, value_at};
-use super::pixelfx::{mix_pixel, AudioCache, Base, RingFrames};
+use super::pixelfx::{mix_pixel, Base, RingFrames, Shared};
 use super::steps::{state_at, StepSel};
 use super::values::{Snapshot, Vals};
 use super::{
@@ -457,7 +457,7 @@ fn mix_effects(
     following: &mut [u32],
     following_count: &mut usize,
     covering: &mut i32,
-    audio: &mut AudioCache,
+    shared: &mut Shared,
 ) {
     let mirror_pan = preset.flags & preset_flag::MIRROR_PAN != 0;
     let mirror_tilt = preset.flags & preset_flag::MIRROR_TILT != 0;
@@ -492,6 +492,7 @@ fn mix_effects(
                 info,
                 frame,
                 layer,
+                (layer_index, effect_index),
                 preset,
                 &effect,
                 &pixel,
@@ -500,7 +501,7 @@ fn mix_effects(
                 vals,
                 Base::Own,
                 intensity,
-                audio,
+                shared,
             ) {
                 *covering = (*covering).max(layer_index as i32);
             }
@@ -508,12 +509,18 @@ fn mix_effects(
             continue;
         }
 
-        let bpm = curve_bpm(layer, frame);
-        let time = curve_time(&effect, layer, ctx.count, bpm);
-
         if show.iter(effect.caps).any(|cap| follows_presets(cap.ty)) {
             push_following(following, following_count, layer_index, effect_index, intensity);
+
+            // a curve only on what follows the presets is worked out where it is played, after them: its value
+            // would not be used here
+            if effect.chans.is_empty() && show.iter(effect.caps).all(|cap| follows_presets(cap.ty)) {
+                continue;
+            }
         }
+
+        let bpm = curve_bpm(layer, frame);
+        let time = curve_time(&effect, layer, ctx.count, bpm);
 
         // swung as far as the place of the fixture in the fan of the preset says
         let value = match fanned(
@@ -595,7 +602,7 @@ fn mix_following(
     vals: &mut Vals,
     snapshot_values: &mut [u32],
     snapshot_flags: &mut [u32],
-    audio: &mut AudioCache,
+    shared: &mut Shared,
 ) {
     if following_count == 0 {
         return;
@@ -697,6 +704,7 @@ fn mix_following(
                         info,
                         frame,
                         &layer,
+                        (layer_index, effect_index),
                         &preset,
                         &effect,
                         &pixel,
@@ -705,7 +713,7 @@ fn mix_following(
                         vals,
                         Base::Snapshot(&snapshot),
                         intensity,
-                        audio,
+                        shared,
                     );
                 }
             }
@@ -840,17 +848,29 @@ fn identify(show: &Show, info: &PartInfo, vals: &mut Vals, time: Ns) {
 }
 
 /// Work out the values of every part of every fixture for the moment of a frame.
-pub(super) fn render_parts(show: &Show, rt: &Runtime, m: &mut Memory, frame: &Frame) {
+/// Work out the values of the parts on the first so many universes: the ones the host takes of the frame.
+pub(super) fn render_parts(show: &Show, rt: &Runtime, m: &mut Memory, frame: &Frame, universes: usize) {
     let root = show.root;
+    let all = root.universes as usize <= universes;
     let frames = RingFrames {
         audio: &*m.audio,
         newest: rt.audio_newest,
         count: rt.audio_count,
     };
-    let mut audio = AudioCache::new(&frames, frame.time);
+    let mut shared = Shared::new(&frames, frame.time);
     let mut caps = CapList::new();
 
     for (index, part) in show.iter(root.parts).enumerate() {
+        // A part on a universe the host doesn't take is not worked out: nothing of another part depends on it (the
+        // same lamp is on the same universe)
+        if !all {
+            if let Some(patch) = show.patch(part.fixture as usize) {
+                if patch.universe as usize >= universes {
+                    continue;
+                }
+            }
+        }
+
         let (layout, fixture) = match (
             show.get(root.layouts, part.layout as usize),
             show.get(root.fixtures, part.fixture as usize),
@@ -971,7 +991,7 @@ pub(super) fn render_parts(show: &Show, rt: &Runtime, m: &mut Memory, frame: &Fr
                     m.following,
                     &mut following_count,
                     &mut covering,
-                    &mut audio,
+                    &mut shared,
                 );
             }
 
@@ -986,7 +1006,7 @@ pub(super) fn render_parts(show: &Show, rt: &Runtime, m: &mut Memory, frame: &Fr
                 &mut vals,
                 m.snapshot_values,
                 m.snapshot_flags,
-                &mut audio,
+                &mut shared,
             );
         }
 

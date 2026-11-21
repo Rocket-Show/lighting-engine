@@ -3,8 +3,8 @@
 
 use engine_pixel::audio::{AudioFrame, AudioFrames, AudioSettings, PixelAudio, FRAME_LENGTH, SILENCE_DB};
 use engine_pixel::{
-    color_of, sample, shades_of, Align, AudioBand, Between, Bitmap, Blend, Direction, Fit, ImageColors, Pattern,
-    PatternSettings, PixelContext, Repeat, Scroll, Shape, Stops, TextColors,
+    color_of, sample_with, shades_of, Align, AudioBand, Between, Bitmap, Blend, Cycle, Direction, Fit, ImageColors,
+    Pattern, PatternSettings, PixelContext, Repeat, Scratch, Scroll, Shape, Stops, TextColors,
 };
 
 use crate::fix::{Ns, FIX_ONE};
@@ -96,6 +96,57 @@ impl<'f> AudioCache<'f> {
     }
 }
 
+/// A pixel effect on a fixture: which layer plays it, which effect of its preset it is, and the fixture among the
+/// fixtures of the preset.
+#[derive(Clone, Copy, PartialEq)]
+struct Running {
+    layer: u32,
+    effect: u32,
+    fixture: u32,
+}
+
+/// What the parts of a frame share: the audio the effects follow, where a pixel effect is in its period on a fixture
+/// (the same for all the pixels of the fixture, and worked out with divisions a small processor takes long for), and
+/// the sines of the patterns which several pixels ask for.
+pub(super) struct Shared<'f> {
+    audio: AudioCache<'f>,
+    cycles: [Option<(Running, Option<Cycle>)>; CACHED],
+    next_cycle: usize,
+    scratch: Scratch,
+}
+
+impl<'f> Shared<'f> {
+    pub fn new(frames: &'f RingFrames<'f>, time: Ns) -> Self {
+        Shared {
+            audio: AudioCache::new(frames, time),
+            cycles: [None; CACHED],
+            next_cycle: 0,
+            scratch: Scratch::new(),
+        }
+    }
+
+    /// Where a pixel effect is in its period on a fixture (none: it does not apply at this moment), worked out the
+    /// first time it is asked for in the frame.
+    fn cycle(&mut self, running: Running, work_out: impl FnOnce() -> Option<Cycle>) -> Option<Cycle> {
+        for (known, cycle) in self.cycles.iter().flatten() {
+            if *known == running {
+                return *cycle;
+            }
+        }
+
+        let cycle = work_out();
+        let index = self.next_cycle % CACHED;
+
+        self.next_cycle = index + 1;
+
+        if let Some(entry) = self.cycles.get_mut(index) {
+            *entry = Some((running, cycle));
+        }
+
+        cycle
+    }
+}
+
 /// Where the color the presets put on a part is read from: the values being mixed, or the ones all presets came to.
 pub(super) enum Base<'s> {
     Own,
@@ -116,13 +167,15 @@ fn context_of(place: &Place) -> PixelContext {
     }
 }
 
-/// Play a pixel effect on a part of a fixture. Whether the effect lit the part.
+/// Play a pixel effect on a part of a fixture: the effect of a number of the preset a layer of a number plays.
+/// Whether the effect lit the part.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn mix_pixel(
     show: &Show,
     info: &PartInfo,
     frame: &Frame,
     layer: &Layer,
+    (layer_index, effect_index): (usize, usize),
     preset: &Preset,
     effect: &Effect,
     pixel: &PixelFx,
@@ -131,7 +184,7 @@ pub(super) fn mix_pixel(
     vals: &mut Vals,
     base: Base,
     intensity: f32,
-    audio: &mut AudioCache,
+    shared: &mut Shared,
 ) -> bool {
     let layout = &info.layout;
     let channels = [layout.red, layout.green, layout.blue];
@@ -149,19 +202,27 @@ pub(super) fn mix_pixel(
     }
 
     let fixture_index = part.whole_index as u32;
-    let fixture_count = preset.whole_count;
-    let bpm = curve_bpm(layer, frame);
-    let time = curve_time(effect, layer, fixture_count, bpm);
+    let running = Running {
+        layer: layer_index as u32,
+        effect: effect_index as u32,
+        fixture: fixture_index,
+    };
+    let cycle = shared.cycle(running, || {
+        let fixture_count = preset.whole_count;
+        let bpm = curve_bpm(layer, frame);
+        let time = curve_time(effect, layer, fixture_count, bpm);
 
-    // a still pattern stands where its phase and the chase put it
-    let cycle = if pixel.flags & pixel_flag::STILL != 0 {
-        still_cycles(effect, fixture_index, fixture_count, bpm)
-    } else {
-        match cycles_at(effect, time, fixture_index, fixture_count, bpm) {
-            Some(cycle) => cycle,
-            // the effect does not apply anymore after it has finished running
-            None => return false,
+        // a still pattern stands where its phase and the chase put it
+        if pixel.flags & pixel_flag::STILL != 0 {
+            Some(still_cycles(effect, fixture_index, fixture_count, bpm))
+        } else {
+            cycles_at(effect, time, fixture_index, fixture_count, bpm)
         }
+    });
+    let cycle = match cycle {
+        Some(cycle) => cycle,
+        // the effect does not apply anymore after it has finished running
+        None => return false,
     };
 
     let max_of = |channel: usize| show.get(layout.channels, channel).map(|chan| chan.max).unwrap_or(255.0);
@@ -237,7 +298,7 @@ pub(super) fn mix_pixel(
             release_millis: pixel.audio_release,
         };
 
-        audio.get(effect.pixel.offset, settings)
+        shared.audio.get(effect.pixel.offset, settings)
     } else {
         None
     };
@@ -271,7 +332,7 @@ pub(super) fn mix_pixel(
 
     // the color of the pixel through the palette, or the own one of an image
     let mut sampled = [0.0f32; 5];
-    sample(&settings, cycle, &context, followed, &mut sampled);
+    sample_with(&settings, cycle, &context, followed, &mut shared.scratch, &mut sampled);
 
     let [place, mut level, red, green, blue] = sampled;
 

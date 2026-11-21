@@ -137,6 +137,60 @@ fn the_universes_carry_each_channel_at_its_address() {
 }
 
 #[test]
+fn a_host_taking_one_universe_gets_it_as_with_all_of_them() {
+    // a chase over the fixtures of both universes, a curve on a color and a fan: where a fixture is among all of them
+    // counts for what it does
+    let compiled = compiled(par_project(
+        look(json!([
+            { "type": "Intensity", "valuePercentage": 0.6, "fan": [{ "position": 0, "valuePercentage": 0.2 }, { "position": 1, "valuePercentage": 1 }] },
+            { "type": "ColorIntensity", "color": "Red", "valuePercentage": 1 },
+            { "type": "ColorIntensity", "color": "Green", "valuePercentage": 0.5 }
+        ])),
+        json!([
+            { "type": "curve", "uuid": "chase", "curveType": "sine", "lengthMillis": 700, "phasingMode": "spread", "capabilities": [{ "type": "Intensity" }] },
+            { "type": "curve", "uuid": "green", "curveType": "triangle", "lengthMillis": 1300, "phasingMode": "spread", "capabilities": [{ "type": "ColorIntensity", "color": "Green" }] }
+        ]),
+        json!({}),
+    ));
+
+    assert_eq!(compiled.index.universes, ["a", "b"]);
+
+    let (mut memory, mut memory_of_one) = (Vec::new(), Vec::new());
+    let mut all = Player::new(&compiled, &mut memory);
+    let mut one = Player::new(&compiled, &mut memory_of_one);
+
+    // the host of the second one only has room for the first universe
+    one.universes.truncate(512);
+
+    for player in [&mut all, &mut one] {
+        player.engine.play_preview(false);
+        player.engine.select_scene(0, true);
+    }
+
+    let mut lit = false;
+
+    for frame in 0..400 {
+        let first = all.at(frame * 25)[..512].to_vec();
+
+        assert_eq!(one.at(frame * 25), first, "frame {frame}");
+        lit |= first.iter().any(|value| *value > 0);
+    }
+
+    assert!(lit);
+
+    // the fixtures on the second universe were not worked out: their values are what they were
+    let rgb = compiled
+        .index
+        .fixtures
+        .iter()
+        .position(|uuid| uuid == "rgb")
+        .expect("the fixture") as u32;
+
+    assert!((0..4).any(|channel| all.engine.value(rgb, channel).is_some_and(|value| value > 0.0)));
+    assert!((0..4).all(|channel| one.engine.value(rgb, channel).map_or(true, |value| value == 0.0)));
+}
+
+#[test]
 fn a_frame_is_the_same_a_month_later() {
     // a sine of 2.5 s on the dimmer and three steps of a second each, looping: both start over every 15 s
     let mut project = par_project(
