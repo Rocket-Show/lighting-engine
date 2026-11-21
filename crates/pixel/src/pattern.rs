@@ -297,12 +297,83 @@ pub fn sample_with(
     out: &mut [f32; 5],
 ) {
     let cycle = Cycle::new(cycle.whole, cycle.frac);
-    // the part of the running period, and the periods run
-    let moment = cycle.frac;
-    let passes = Cycle::from_whole(cycle.whole);
-    let size = settings.size;
-    let softness = settings.softness;
-    let direction = settings.direction;
+    let at = Start {
+        cycle,
+        // the part of the running period, and the periods run
+        moment: cycle.frac,
+        passes: Cycle::from_whole(cycle.whole),
+        size: settings.size,
+        softness: settings.softness,
+        direction: settings.direction,
+    };
+
+    match settings.pattern {
+        Pattern::Chase
+        | Pattern::Comet
+        | Pattern::Wipe
+        | Pattern::Flow
+        | Pattern::Sparkle
+        | Pattern::Plasma
+        | Pattern::Ripple
+        | Pattern::Shapes => sample_running(settings, &at, context, scratch, out),
+        Pattern::Fire
+        | Pattern::Center
+        | Pattern::Stripes
+        | Pattern::Stack
+        | Pattern::Sweep
+        | Pattern::Spiral
+        | Pattern::Checker
+        | Pattern::Rain => sample_fields(settings, &at, context, out),
+        Pattern::Tunnel
+        | Pattern::Orbit
+        | Pattern::Wave
+        | Pattern::Meter
+        | Pattern::Scope
+        | Pattern::Text
+        | Pattern::Image
+        | Pattern::Unknown => sample_shown(settings, &at, context, audio, scratch, out),
+    }
+
+    // settings or a pixel out of every range (a size which makes no cells, a picture of no pixels) may end in what is
+    // no number: nothing of it leaves
+    if !out[0].is_finite() {
+        out[0] = 0.0;
+    }
+
+    if out[1].is_nan() {
+        out[1] = 0.0;
+    }
+}
+
+/// What every pattern starts from: the moment and the settings read the same by all of them.
+#[derive(Clone, Copy)]
+struct Start {
+    cycle: Cycle,
+    moment: f32,
+    passes: Cycle,
+    size: f32,
+    softness: f32,
+    direction: Direction,
+}
+
+// The patterns running along the pixels. The patterns are split into a few functions of their own instead of one, as a host whose WebAssembly
+// runtime turns every function into a method of its own (an app in a JVM) leaves a very large one to its interpreter.
+#[inline(never)]
+fn sample_running(
+    settings: &PatternSettings<'_>,
+    at: &Start,
+    context: &PixelContext,
+    scratch: &mut Scratch,
+    out: &mut [f32; 5],
+) {
+    let Start {
+        cycle,
+        moment,
+        passes,
+        size,
+        softness,
+        direction,
+    } = *at;
 
     match settings.pattern {
         Pattern::Chase => {
@@ -436,6 +507,25 @@ pub fn sample_with(
                 band(libm::fabsf(distance - moment * 1.35), width / 2.0, edge) * (1.0 - moment * 0.55),
             );
         }
+        // (the patterns of the other functions)
+        _ => {}
+    }
+}
+
+// The patterns filling the pixels. The patterns are split into a few functions of their own instead of one, as a host whose WebAssembly
+// runtime turns every function into a method of its own (an app in a JVM) leaves a very large one to its interpreter.
+#[inline(never)]
+fn sample_fields(settings: &PatternSettings<'_>, at: &Start, context: &PixelContext, out: &mut [f32; 5]) {
+    let Start {
+        cycle,
+        moment,
+        passes,
+        size,
+        softness,
+        direction,
+    } = *at;
+
+    match settings.pattern {
         Pattern::Fire => {
             // flames rising from the bottom, a glow flickering on a bar
             // (the place the fixture starts in the noise, (seed % 997) * 1.37, as a fraction of whole numbers)
@@ -609,6 +699,32 @@ pub fn sample_with(
 
             set(out, brightest, brightest * brightest);
         }
+        // (the patterns of the other functions)
+        _ => {}
+    }
+}
+
+// The patterns showing a shape, the audio or a picture. The patterns are split into a few functions of their own instead of one, as a host whose WebAssembly
+// runtime turns every function into a method of its own (an app in a JVM) leaves a very large one to its interpreter.
+#[inline(never)]
+fn sample_shown(
+    settings: &PatternSettings<'_>,
+    at: &Start,
+    context: &PixelContext,
+    audio: Option<&PixelAudio<'_>>,
+    scratch: &mut Scratch,
+    out: &mut [f32; 5],
+) {
+    let Start {
+        cycle,
+        moment,
+        size,
+        softness,
+        direction,
+        ..
+    } = *at;
+
+    match settings.pattern {
         Pattern::Tunnel => {
             // frames flying outwards, as if driving through a tunnel: the deeper the closer together
             let x = (context.x - 0.5) * 2.0 * context.aspect_x;
@@ -780,19 +896,10 @@ pub fn sample_with(
         }
         // a pattern this engine doesn't know
         Pattern::Unknown => set(out, 0.0, 0.0),
-    }
-
-    // settings or a pixel out of every range (a size which makes no cells, a picture of no pixels) may end in what is
-    // no number: nothing of it leaves
-    if !out[0].is_finite() {
-        out[0] = 0.0;
-    }
-
-    if out[1].is_nan() {
-        out[1] = 0.0;
+        // (the patterns of the other functions)
+        _ => {}
     }
 }
-
 // the band of the 16 a column of a level meter shows, from the lowest to the highest: where its middle is
 fn band_of_column(context: &PixelContext) -> i32 {
     let highest = BANDS as i32 - 1;

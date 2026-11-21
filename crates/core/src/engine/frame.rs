@@ -4,6 +4,11 @@
 //! bottom first: the values of their step, then their effects. The effects following what the presets give a fixture
 //! (a movement, a curve on the pan, the tilt or the dimmer, a pixel effect in the colors of the presets) are played
 //! once all presets are mixed.
+//!
+//! The stages of a frame (the parts, the capabilities, the effects, the effects following the presets, the universes)
+//! are kept functions of their own, not inlined into one: a host whose WebAssembly runtime turns every function into a
+//! method of its own (an app in a JVM) leaves a very large method to its interpreter, which takes many times longer
+//! than the same code in a few methods its compiler optimises.
 
 use crate::fix::{beats_to_ns, rem_floor, Fix, Ns, NS_PER_MS};
 use crate::format::{
@@ -164,6 +169,7 @@ fn slot_of(v: &CapV) -> Option<f32> {
 /// Mix the values for the capabilities a preset gives a fixture over its channels. `curve_on_dimmer` tells whether an
 /// effect of the preset plays on the dimmer (which counts as lighting it).
 #[allow(clippy::too_many_arguments)]
+#[inline(never)]
 pub(super) fn mix_caps(
     show: &Show,
     info: &PartInfo,
@@ -442,6 +448,7 @@ fn follows_presets(t: u8) -> bool {
 
 /// The effects of a preset on a part of a fixture: the ones following the presets are kept for later.
 #[allow(clippy::too_many_arguments)]
+#[inline(never)]
 fn mix_effects(
     show: &Show,
     info: &PartInfo,
@@ -591,6 +598,7 @@ struct Axis {
 /// The effects following what the presets give a fixture, in the order of their presets, the one on top over the
 /// others.
 #[allow(clippy::too_many_arguments)]
+#[inline(never)]
 fn mix_following(
     show: &Show,
     info: &PartInfo,
@@ -806,6 +814,7 @@ fn mix_following(
 }
 
 /// what identifies a fixture: full white or dark, the shutter open, the iris open and the color wheels on their open slot
+#[inline(never)]
 fn identify(show: &Show, info: &PartInfo, vals: &mut Vals, time: Ns) {
     let lit = rem_floor(crate::fix::div_floor(time, BLINK), 2) == 0;
     let level = if lit { 1.0 } else { 0.0 };
@@ -849,6 +858,7 @@ fn identify(show: &Show, info: &PartInfo, vals: &mut Vals, time: Ns) {
 
 /// Work out the values of every part of every fixture for the moment of a frame.
 /// Work out the values of the parts on the first so many universes: the ones the host takes of the frame.
+#[inline(never)]
 pub(super) fn render_parts(show: &Show, rt: &Runtime, m: &mut Memory, frame: &Frame, universes: usize) {
     let root = show.root;
     let all = root.universes as usize <= universes;
@@ -1032,6 +1042,7 @@ pub(super) fn render_parts(show: &Show, rt: &Runtime, m: &mut Memory, frame: &Fr
 
 /// Write the universes from the values of the last frame: each channel of each part at its address, the brightness
 /// dimmed by the master dimmers, a channel with fine channels as its bytes.
+#[inline(never)]
 pub(super) fn write_universes(show: &Show, rt: &Runtime, m: &Memory, out: &mut [u8]) {
     let root = show.root;
     let universes = (root.universes as usize).min(out.len() / UNIVERSE_SIZE);
