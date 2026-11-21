@@ -358,7 +358,7 @@ struct Start {
 
 // The patterns running along the pixels. The patterns are split into a few functions of their own instead of one, as a host whose WebAssembly
 // runtime turns every function into a method of its own (an app in a JVM) leaves a very large one to its interpreter.
-#[inline(never)]
+#[cfg_attr(target_family = "wasm", inline(never))]
 fn sample_running(
     settings: &PatternSettings<'_>,
     at: &Start,
@@ -514,7 +514,7 @@ fn sample_running(
 
 // The patterns filling the pixels. The patterns are split into a few functions of their own instead of one, as a host whose WebAssembly
 // runtime turns every function into a method of its own (an app in a JVM) leaves a very large one to its interpreter.
-#[inline(never)]
+#[cfg_attr(target_family = "wasm", inline(never))]
 fn sample_fields(settings: &PatternSettings<'_>, at: &Start, context: &PixelContext, out: &mut [f32; 5]) {
     let Start {
         cycle,
@@ -706,7 +706,7 @@ fn sample_fields(settings: &PatternSettings<'_>, at: &Start, context: &PixelCont
 
 // The patterns showing a shape, the audio or a picture. The patterns are split into a few functions of their own instead of one, as a host whose WebAssembly
 // runtime turns every function into a method of its own (an app in a JVM) leaves a very large one to its interpreter.
-#[inline(never)]
+#[cfg_attr(target_family = "wasm", inline(never))]
 fn sample_shown(
     settings: &PatternSettings<'_>,
     at: &Start,

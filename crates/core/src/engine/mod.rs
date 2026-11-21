@@ -989,7 +989,7 @@ impl<'a> Engine<'a> {
     }
 
     // (a function of its own, see the module frame)
-    #[inline(never)]
+    #[cfg_attr(target_family = "wasm", inline(never))]
     fn timeline_layers(&mut self, time: Ns, now: Ns) -> usize {
         let mut count = 0;
 
@@ -1082,7 +1082,7 @@ impl<'a> Engine<'a> {
     }
 
     // (a function of its own, see the module frame)
-    #[inline(never)]
+    #[cfg_attr(target_family = "wasm", inline(never))]
     fn preview_layers(&mut self, time: Ns) -> usize {
         let mut count = 0;
         let any_scene = self.m.scene_selected.iter().any(|selected| *selected != 0);
@@ -1122,7 +1122,7 @@ impl<'a> Engine<'a> {
     }
 
     // (a function of its own, see the module frame)
-    #[inline(never)]
+    #[cfg_attr(target_family = "wasm", inline(never))]
     fn live_layers(&mut self, time: Ns, now: Ns) -> usize {
         let mut count = 0;
 
