@@ -897,7 +897,9 @@ record!(
 record!(
     /// A clip of a timeline: when it starts and when it ends.
     Region {
+        /// when it starts, in nanoseconds of the timeline
         start: i64,
+        /// when it ends, in nanoseconds of the timeline
         end: i64,
     }
 );

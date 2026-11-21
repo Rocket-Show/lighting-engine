@@ -712,8 +712,8 @@ A clip of a timeline: when it starts and when it ends. 16 bytes.
 
 | Offset | Field | Type | Holds |
 | -----: | ----- | ---- | ----- |
-| 0 | `start` | `i64` |  |
-| 8 | `end` | `i64` |  |
+| 0 | `start` | `i64` | when it starts, in nanoseconds of the timeline |
+| 8 | `end` | `i64` | when it ends, in nanoseconds of the timeline |
 
 <!-- prettier-ignore-end -->
 
